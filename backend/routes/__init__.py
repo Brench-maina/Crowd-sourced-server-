@@ -2,7 +2,7 @@ from flask import Blueprint
 from .auth import auth_bp
 from .user import user_bp
 from .community import community_bp
-from .learning import learning_bp
+from .learning_paths import learning_bp
 # from .leaderboard import leaderboard_bp
 
 
