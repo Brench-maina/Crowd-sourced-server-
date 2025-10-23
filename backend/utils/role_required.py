@@ -7,12 +7,16 @@ def role_required(*roles):
     def wrapper(fn):
         @wraps(fn)
         def decorator(*args, **kwargs):
+            
             user_id = get_jwt_identity()
             if not user_id:
                 return jsonify({"error": "Unauthorized"}), 401
 
-            user = User.query.get(user_id)
-            if not user or user.role.value not in roles:
+            user = User.query.get(int(user_id))
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            if user.role.value not in roles:
                 return jsonify({"error": "Forbidden"}), 403
 
             return fn(*args, **kwargs)
