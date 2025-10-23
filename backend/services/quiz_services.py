@@ -1,10 +1,10 @@
-# app/services/quiz_service.py
 from models import db, Quiz, Question, Choice, UserProgress, Module
 from services.core_services import PointsService
 from datetime import datetime
 
 class QuizService:
-   
+    #Handles quiz grading, scoring, and user progress updates.
+
     @staticmethod
     def evaluate_quiz(user, quiz_id, user_answers):
 
@@ -18,7 +18,7 @@ class QuizService:
         for question in quiz.questions:
             chosen_choice_id = user_answers.get(str(question.id)) or user_answers.get(question.id)
             if not chosen_choice_id:
-                continue 
+                continue  
 
             selected_choice = Choice.query.get(chosen_choice_id)
             if selected_choice and selected_choice.is_correct:
