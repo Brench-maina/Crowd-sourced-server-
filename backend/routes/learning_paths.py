@@ -210,9 +210,9 @@ def unfollow_path(path_id):
 @jwt_required()
 def get_my_learning_paths():
     try:
-        # Get current user identity from JWT
+       
         current_user_identity = get_jwt_identity()
-        # Handle both dict and simple ID formats
+       
         user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
         
         user = User.query.get(user_id)
@@ -225,7 +225,7 @@ def get_my_learning_paths():
         for path in user.followed_paths:
             # Only include published paths
             if path.is_published:
-                # Count completed modules
+                
                 completed_modules = sum(
                     1 for module in path.modules if module in user.completed_modules
                 )
