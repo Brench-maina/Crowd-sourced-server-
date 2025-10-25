@@ -5,6 +5,8 @@ from .community import community_bp
 from .learning_paths import learning_paths_bp
 from .leaderboard import leaderboard_bp
 from .progress import progress_bp
+from .modules import modules_bp
+from .badges import badges_bp
 
 
 
@@ -15,4 +17,5 @@ def register_blueprints(app):
     app.register_blueprint(learning_paths_bp, url_prefix="/learning-paths")
     app.register_blueprint(leaderboard_bp, url_prefix="/leaderboard")
     app.register_blueprint(progress_bp, url_prefix="/progress")
-    
+    app.register_blueprint(modules_bp)
+    app.register_blueprint(badges_bp, url_prefix="/badges")
