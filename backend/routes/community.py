@@ -8,7 +8,7 @@ community_bp = Blueprint("community_bp", __name__)
 # Create a community post
 @community_bp.route("/posts", methods=["POST"])
 @jwt_required()
-@role_required("admin", "contributor")  # individual args
+@role_required("admin", "contributor")  
 def create_post():
     try:
         current_user = get_jwt_identity()
