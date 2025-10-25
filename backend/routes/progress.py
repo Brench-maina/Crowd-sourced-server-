@@ -5,7 +5,7 @@ from models import db, User, Module, UserProgress, LearningPath
 from services.core_services import PointsService
 
 
-progress_bp = Blueprint('progress_bp', _name_)
+progress_bp = Blueprint('progress_bp', __name__)
 
 # mark module as completed
 @progress_bp.route('/modules/<int:module_id>/complete', methods=['POST'])
@@ -63,4 +63,4 @@ def get_path_progress(path_id):
         "path_title": path.title,
         "overall_completion": round(overall, 2),
         "progress": progress_data
-    }),200
+    }), 200
