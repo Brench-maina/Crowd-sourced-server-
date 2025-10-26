@@ -66,9 +66,9 @@ def register():
             'xp': new_user.xp,
             'streak_days': new_user.streak_days
         }
-    }), 201
+    }), 200
 
-
+ 
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -103,7 +103,7 @@ def login():
             'xp': user.xp,
             'streak_days': user.streak_days
         }
-    }), 200
+    }), 201
 
 
 @auth_bp.route('/me', methods=['GET'])
@@ -130,3 +130,4 @@ def get_current_user():
 @jwt_required()
 def logout():
     return jsonify({'message': 'Logout successful'})
+
