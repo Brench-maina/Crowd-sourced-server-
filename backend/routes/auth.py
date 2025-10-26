@@ -49,13 +49,22 @@ def register():
     db.session.add(new_user)
     db.session.commit()
 
+    access_token = create_access_token(
+      identity=str(new_user.id),
+        expires_delta=timedelta(hours=8)
+    )
+
     return jsonify({
         'message': 'User registered successfully',
+        'access_token': access_token,
         'user': {
             'id': new_user.id,
             'username': new_user.username,
             'email': new_user.email,
-            'role': new_user.role.value
+            'role': new_user.role.value,
+            'points': new_user.points,
+            'xp': new_user.xp,
+            'streak_days': new_user.streak_days
         }
     }), 201
 
