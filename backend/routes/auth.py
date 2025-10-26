@@ -49,17 +49,26 @@ def register():
     db.session.add(new_user)
     db.session.commit()
 
+    access_token = create_access_token(
+        identity=str(new_user.id),
+           expires_delta=timedelta(hours=8)
+    )    
+
     return jsonify({
         'message': 'User registered successfully',
+        'access_token': access_token,
         'user': {
             'id': new_user.id,
             'username': new_user.username,
             'email': new_user.email,
             'role': new_user.role.value
+            'points': user.points,
+            'xp': user.xp,
+            'streak_days': user.streak_days
         }
-    }), 201
+    }), 200
 
-
+ 
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -94,7 +103,7 @@ def login():
             'xp': user.xp,
             'streak_days': user.streak_days
         }
-    }), 200
+    }), 201
 
 
 @auth_bp.route('/me', methods=['GET'])
@@ -121,3 +130,4 @@ def get_current_user():
 @jwt_required()
 def logout():
     return jsonify({'message': 'Logout successful'})
+
