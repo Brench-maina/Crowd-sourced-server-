@@ -8,7 +8,6 @@ from datetime import datetime
 
 badges_bp = Blueprint('badges_bp', __name__)
 
-
 #GET all badges
 @badges_bp.route('/', methods=['GET'])
 def get_all_badges():
@@ -51,8 +50,8 @@ def get_badge(badge_key):
 @jwt_required()
 def get_my_badges():
     try:
-        current_user = get_jwt_identity()
-        user_id = current_user["id"]
+        user_id = int(get_jwt_identity())
+    
 
         all_badges = Badge.query.all()
         earned_badge_ids = {b.badge_id for b in UserBadge.query.filter_by(user_id=user_id).all()}

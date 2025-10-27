@@ -5,7 +5,7 @@ from sqlalchemy import func
 from models import db, ContentFlag, CommunityPost, CommunityComment, User, ContentStatusEnum
 from utils.role_required import role_required
 
-moderation_bp = Blueprint('moderation_bp', _name_)
+moderation_bp = Blueprint('moderation_bp', __name__)
 
 #flag content (post or comment)
 @moderation_bp.route('/flag', methods=['POST'])
@@ -268,4 +268,4 @@ def bulk_action_flags():
         }), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": f"Failed to process bulk action: {str(e)}"}), 500       
+        return jsonify({"error": f"Failed to process bulk action: {str(e)}"}), 500
