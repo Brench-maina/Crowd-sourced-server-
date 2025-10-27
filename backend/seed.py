@@ -5,14 +5,23 @@ from models import (
     ContentStatusEnum
 )
 from werkzeug.security import generate_password_hash
-from datetime import datetime
+from sqlalchemy.engine import Engine
 
-with app.app_context():
-    # Drop and recreate all tables
-    db.drop_all()
-    db.create_all()
 
-    # USERS
+def is_remote_database(engine: Engine):
+    """Detect if connected to Render/PostgreSQL."""
+    url = str(engine.url)
+    return "render.com" in url or "postgresql" in url
+
+
+def seed_database():
+    """Seed only if database is empty."""
+    # Check if data exists
+    if User.query.first():
+        print("Database already contains data — skipping seeding.")
+        return
+
+    # --- USERS ---
     users = [
         User(
             username="admin",
@@ -22,9 +31,9 @@ with app.app_context():
             points=1500,
             xp=2500
         ),
-        User(
+        User( # --- BADGES ---
             username="creator",
-            email="creator@learnplatform.com",
+            email="creator@gmail.com",
             password_hash=generate_password_hash("creator123"),
             role=RoleEnum.contributor,
             points=700,
@@ -32,7 +41,7 @@ with app.app_context():
         ),
         User(
             username="learner",
-            email="learner@learnplatform.com",
+            email="learner@gmail.com",
             password_hash=generate_password_hash("learner123"),
             role=RoleEnum.learner,
             points=350,
@@ -46,7 +55,7 @@ with app.app_context():
     contributor = users[1]
     learner = users[2]
 
-    # BADGES
+    
     badges = [
         Badge(key="first_login", name="First Login", description="Welcome!"),
         Badge(key="first_module", name="Module Explorer", description="Completed first module"),
@@ -55,99 +64,74 @@ with app.app_context():
     db.session.add_all(badges)
     db.session.commit()
 
-    # LEARNING PATHS
-    paths = [
-        LearningPath(
-            title="Python Fundamentals",
-            description="Learn Python basics",
-            creator_id=contributor.id,
-            status=ContentStatusEnum.approved,
-            is_published=True
-        )
-    ]
-    db.session.add_all(paths)
+    
+    path = LearningPath(
+        title="Python Fundamentals",
+        description="Learn Python basics",
+        creator_id=contributor.id,
+        status=ContentStatusEnum.approved,
+        is_published=True
+    )
+    db.session.add(path)
     db.session.commit()
 
-    # MODULES
-    modules = [
-        Module(
-            title="Intro to Python",
-            description="Variables, data types, syntax",
-            learning_path_id=paths[0].id
-        )
-    ]
-    db.session.add_all(modules)
+   
+    module = Module(
+        title="Intro to Python",
+        description="Variables, data types, syntax",
+        learning_path_id=path.id
+    )
+    db.session.add(module)
     db.session.commit()
 
-    # QUIZZES
-    quizzes = [
-        Quiz(
-            title="Python Basics Quiz",
-            module_id=modules[0].id
-        )
-    ]
-    db.session.add_all(quizzes)
+  
+    quiz = Quiz(title="Python Basics Quiz", module_id=module.id)
+    db.session.add(quiz)
     db.session.commit()
 
-    # QUESTIONS + CHOICES
-    questions = [
-        Question(
-            quiz_id=quizzes[0].id,
-            text="What is the correct way to declare a variable in Python?"
-        ),
-        Question(
-            quiz_id=quizzes[0].id,
-            text="Which keyword is used to define a function?"
-        )
-    ]
-    db.session.add_all(questions)
+    q1 = Question(quiz_id=quiz.id, text="What is the correct way to declare a variable in Python?")
+    q2 = Question(quiz_id=quiz.id, text="Which keyword is used to define a function?")
+    db.session.add_all([q1, q2])
     db.session.commit()
 
     choices = [
-        Choice(question_id=questions[0].id, text="x = 5", is_correct=True),
-        Choice(question_id=questions[0].id, text="int x = 5", is_correct=False),
-        Choice(question_id=questions[1].id, text="def", is_correct=True),
-        Choice(question_id=questions[1].id, text="function", is_correct=False)
+        Choice(question_id=q1.id, text="x = 5", is_correct=True),
+        Choice(question_id=q1.id, text="int x = 5", is_correct=False),
+        Choice(question_id=q2.id, text="def", is_correct=True),
+        Choice(question_id=q2.id, text="function", is_correct=False)
     ]
     db.session.add_all(choices)
     db.session.commit()
 
-    # COMMUNITY POSTS + COMMENTS
-    posts = [
-        CommunityPost(
-            title="How to learn Flask?",
-            content="Any tips for beginners?",
-            author_id=learner.id
-        )
-    ]
-    db.session.add_all(posts)
+    
+    post = CommunityPost(
+        title="How to learn Flask?",
+        content="Any tips for beginners?",
+        author_id=learner.id
+    )
+    db.session.add(post)
     db.session.commit()
 
-    comments = [
-        CommunityComment(
-            content="Check Flask documentation and tutorials!",
-            author_id=contributor.id,
-            post_id=posts[0].id
-        )
-    ]
-    db.session.add_all(comments)
+    
+    comment = CommunityComment(
+        content="Check Flask documentation and tutorials!",
+        author_id=contributor.id,
+        post_id=post.id
+    )
+    db.session.add(comment)
     db.session.commit()
 
-    # USER PROGRESS
-    progress = [
-        UserProgress(user_id=learner.id, module_id=modules[0].id, completion_percent=50)
-    ]
-    db.session.add_all(progress)
+   
+    progress = UserProgress(user_id=learner.id, module_id=module.id, completion_percent=50)
+    db.session.add(progress)
     db.session.commit()
 
-    # USER BADGES
-    user_badges = [
-        UserBadge(user_id=learner.id, badge_id=badges[0].id)
-    ]
-    db.session.add_all(user_badges)
+    
+    user_badge = UserBadge(user_id=learner.id, badge_id=badges[0].id)
+    db.session.add(user_badge)
     db.session.commit()
 
-    # LEADERBOARD
+  
     leaderboard_entries = [
         Leaderboard(user_id=u.id, total_points=u.points)
         for u in users
@@ -157,3 +141,10 @@ with app.app_context():
     Leaderboard.update_leaderboard()
 
     print("Database seeded successfully!")
+
+
+with app.app_context():
+    if is_remote_database(db.engine):
+        seed_database()
+    else:
+        print("Skipping seeding (local database).")
