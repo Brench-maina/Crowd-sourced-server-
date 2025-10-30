@@ -6,7 +6,7 @@ from services.core_services import BadgeService
 from utils.role_required import role_required
 from datetime import datetime
 
-badges_bp = Blueprint('badges_bp', _name_)
+badges_bp = Blueprint('badges_bp', __name__)
 
 
 #GET all badges

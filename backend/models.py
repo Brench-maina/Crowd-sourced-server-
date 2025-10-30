@@ -113,8 +113,19 @@ class LearningPath(db.Model):
     followers = db.relationship("User", secondary=path_followers, back_populates="followed_paths")
     modules = db.relationship("Module", back_populates="learning_path", lazy="dynamic", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<LearningPath {self.title}>"
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'description': self.description,
+            'status': self.status.value,
+            'creator_id': self.creator_id,
+            'is_published': self.is_published,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'module_count': self.modules.count() if self.modules else 0,
+            'contributor_count': len(self.contributors) if self.contributors else 0,
+        }
+
     
 class LearningResource(db.Model):
     __tablename__ = "learning_resource"
@@ -128,8 +139,15 @@ class LearningResource(db.Model):
 
     module = db.relationship("Module", back_populates="resources")
      
-    def __repr__(self):
-        return f"<LearningResource {self.title}>"    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'type': self.type,
+            'url': self.url,
+            'description': self.description,
+            'module_id': self.module_id
+        } 
 
 
 class Module(db.Model):
@@ -146,8 +164,17 @@ class Module(db.Model):
     progress_records = db.relationship("UserProgress", back_populates="module", lazy="dynamic", cascade="all, delete-orphan")
     resources = db.relationship("LearningResource", back_populates="module", lazy="dynamic")
     
-    def __repr__(self):
-        return f"<Module {self.title}>"
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'description': self.description,
+            'learning_path_id': self.learning_path_id,
+            'learning_path_title': self.learning_path.title if self.learning_path else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'resource_count': self.resources.count() if self.resources else 0,
+            'quiz_count': self.quizzes.count() if self.quizzes else 0
+        }
 
 
 class Quiz(db.Model):
@@ -161,8 +188,15 @@ class Quiz(db.Model):
     module = db.relationship("Module", back_populates="quizzes")
     questions = db.relationship("Question", back_populates="quiz", lazy="dynamic", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<Quiz {self.title}>"
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'module_id': self.module_id,
+            'module_title': self.module.title if self.module else None,
+            'passing_score': self.passing_score,
+            'question_count': self.questions.count() if self.questions else 0
+        }
 
 
 class Question(db.Model):
@@ -175,8 +209,15 @@ class Question(db.Model):
     quiz = db.relationship("Quiz", back_populates="questions")
     choices = db.relationship("Choice", back_populates="question", lazy="dynamic", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<Question {self.id}>"
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'quiz_id': self.quiz_id,
+            'quiz_title': self.quiz.title if self.quiz else None,
+            'text': self.text,
+            'choice_count': self.choices.count() if self.choices else 0
+        }
+
 
 
 class Choice(db.Model):
@@ -189,8 +230,23 @@ class Choice(db.Model):
 
     question = db.relationship("Question", back_populates="choices")
 
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'question_id': self.question_id,
+            'text': self.text,
+            'is_correct': self.is_correct
+        }
+    def to_public_dict(self):
+        """Return choice data without revealing correctness."""
+        return {
+            'id': self.id,
+            'question_id': self.question_id,
+            'text': self.text
+        }
+    
     def __repr__(self):
-        return f"<Choice {self.id}>"
+        return f"<Choice id={self.id} text='{self.text[:30]}...' correct={self.is_correct}>"
 
 
 class UserProgress(db.Model):
@@ -207,9 +263,17 @@ class UserProgress(db.Model):
     user = db.relationship("User", back_populates="progress")
     module = db.relationship("Module", back_populates="progress_records")
 
-    def __repr__(self):
-        return f"<UserProgress user={self.user_id} module={self.module_id}>"
-
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'user_username': self.user.username if self.user else None,
+            'module_id': self.module_id,
+            'completion_percent': self.completion_percent,
+            'last_score': self.last_score,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None
+        }
 
 # Community 
 class CommunityPost(db.Model):
@@ -224,9 +288,16 @@ class CommunityPost(db.Model):
     author = db.relationship("User", back_populates="posts")
     comments = db.relationship("CommunityComment", back_populates="post", cascade="all, delete-orphan", lazy="dynamic")
 
-    def __repr__(self):
-        return f"<CommunityPost {self.title}>"
-
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'author_id': self.author_id,
+            'author_username': self.author.username if self.author else None,
+            'title': self.title,
+            'content': self.content,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'comment_count': self.comments.count() if self.comments else 0
+        }
 
 class CommunityComment(db.Model):
     __tablename__ = "community_comment"
@@ -240,9 +311,15 @@ class CommunityComment(db.Model):
     post = db.relationship("CommunityPost", back_populates="comments")
     author = db.relationship("User", back_populates="comments")
 
-    def __repr__(self):
-        return f"<CommunityComment {self.id}>"
-
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'post_id': self.post_id,
+            'author_id': self.author_id,
+            'author_username': self.author.username if self.author else None,
+            'content': self.content,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 class Badge(db.Model):
     __tablename__ = "badge"
@@ -255,9 +332,14 @@ class Badge(db.Model):
 
     users = db.relationship("UserBadge", back_populates="badge", lazy="dynamic", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<Badge {self.name}>"
-
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'key': self.key,
+            'name': self.name,
+            'description': self.description,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 class UserBadge(db.Model):
     __tablename__ = "user_badge"
@@ -270,9 +352,15 @@ class UserBadge(db.Model):
     user = db.relationship("User", back_populates="badges")
     badge = db.relationship("Badge", back_populates="users")
 
-    def __repr__(self):
-        return f"<UserBadge user={self.user_id} badge={self.badge_id}>"
-
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'user_username': self.user.username if self.user else None,
+            'badge_id': self.badge_id,
+            'badge_name': self.badge.name if self.badge else None,
+            'awarded_at': self.awarded_at.isoformat() if self.awarded_at else None
+        }
 
 class Leaderboard(db.Model):
     __tablename__ = "leaderboard"
@@ -285,9 +373,15 @@ class Leaderboard(db.Model):
 
     user = db.relationship("User", back_populates="leaderboard_entry")
 
-    def __repr__(self):
-        return f"<Leaderboard user={self.user.username if self.user else 'Unknown'} points={self.total_points}>"
-
+    def  to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'user_username': self.user.username if self.user else None,
+            'total_points': self.total_points,
+            'rank': self.rank,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
     @staticmethod
     def update_leaderboard():
         """Recalculate ranks whenever points change."""
@@ -309,9 +403,18 @@ class PlatformEvent(db.Model):
 
     participations = db.relationship("ChallengeParticipation", back_populates="event", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<PlatformEvent {self.name}>"
-
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'start_date': self.start_date.isoformat() if self.start_date else None,
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+            'reward_points': self.reward_points,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'participants_count': len(self.participations) if self.participations else 0
+        }
+    
 class UserChallenge(db.Model):
     __tablename__ = "user_challenge"
 
@@ -325,8 +428,16 @@ class UserChallenge(db.Model):
 
     participations = db.relationship("ChallengeParticipation", back_populates="challenge", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<UserChallenge {self.title}>"
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'description': self.description,
+            'xp_reward': self.xp_reward,
+            'points_reward': self.points_reward,
+            'duration_days': self.duration_days,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 class ChallengeParticipation(db.Model):
     __tablename__ = "challenge_participation"
@@ -344,9 +455,19 @@ class ChallengeParticipation(db.Model):
     challenge = db.relationship("UserChallenge", back_populates="participations")
     event = db.relationship("PlatformEvent", back_populates="participations")
 
-    def __repr__(self):
-        return f"<ChallengeParticipation user={self.user_id} challenge={self.challenge_id}>"
-
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'user_username': self.user.username if self.user else None,
+            'challenge_id': self.challenge_id,
+            'challenge_title': self.challenge.title if self.challenge else None,
+            'event_id': self.event_id,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'progress_percent': self.progress_percent,
+            'is_completed': self.is_completed
+        }
 
 class PointsLog(db.Model):
     __tablename__ = "points_log"
@@ -359,9 +480,16 @@ class PointsLog(db.Model):
 
     user = db.relationship("User")
 
-    def __repr__(self):
-        return f"<PointsLog user={self.user_id} points={self.points_change}>"
-
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'user_username:': self.user.username if self.user else None,
+            'points_change': self.points_change,
+            'reason': self.reason,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+    
 class ContentFlag(db.Model):
     __tablename__ = "content_flag"
 
@@ -377,9 +505,22 @@ class ContentFlag(db.Model):
     post = db.relationship("CommunityPost")
     comment = db.relationship("CommunityComment")
 
-    def __repr__(self):
-        return f"<ContentFlag reporter={self.reporter_id} status={self.status.value}>"
-
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'reporter_id': self.reporter_id,
+            'reporter_username': self.reporter.username if self.reporter else None,
+            'post_id': self.post_id,
+            'post_title': self.post.title if self.post else None,
+            'comment_id': self.comment_id,
+            'flagged_content': (
+                self.comment.content if self.comment else 
+                self.post.content if self.post else None
+            ),
+            'reason': self.reason,
+            'status': self.status.value,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 class UserModeration(db.Model):
     __tablename__ = "user_moderation"
 
@@ -393,5 +534,13 @@ class UserModeration(db.Model):
     admin = db.relationship("User", foreign_keys=[admin_id])
     target_user = db.relationship("User", foreign_keys=[target_user_id])
 
-    def __repr__(self):
-        return f"<UserModeration admin={self.admin_id} target={self.target_user_id} action={self.action}>"
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'admin_id': self.admin_id,
+            'target_user_id': self.target_user_id,
+            'target_username': self.target_user.username if self.target_user else None,
+            'action': self.action,
+            'reason': self.reason,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
