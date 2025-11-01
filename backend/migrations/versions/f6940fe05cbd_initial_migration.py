@@ -1,8 +1,8 @@
-"""Initial migration
+"""initial migration
 
-Revision ID: b59ab4aa5a0d
+Revision ID: f6940fe05cbd
 Revises: 
-Create Date: 2025-10-23 14:27:00.903607
+Create Date: 2025-11-01 00:10:18.331673
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'b59ab4aa5a0d'
+revision = 'f6940fe05cbd'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -58,30 +58,6 @@ def upgrade():
         batch_op.create_index(batch_op.f('ix_user_points'), ['points'], unique=False)
         batch_op.create_index(batch_op.f('ix_user_username'), ['username'], unique=True)
 
-    op.create_table('user_challenge',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('title', sa.String(length=255), nullable=False),
-    sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('xp_reward', sa.Integer(), nullable=True),
-    sa.Column('points_reward', sa.Integer(), nullable=True),
-    sa.Column('duration_days', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_table('challenge_participation',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=True),
-    sa.Column('challenge_id', sa.Integer(), nullable=True),
-    sa.Column('event_id', sa.Integer(), nullable=True),
-    sa.Column('started_at', sa.DateTime(), nullable=True),
-    sa.Column('completed_at', sa.DateTime(), nullable=True),
-    sa.Column('progress_percent', sa.Integer(), nullable=True),
-    sa.Column('is_completed', sa.Boolean(), nullable=True),
-    sa.ForeignKeyConstraint(['challenge_id'], ['user_challenge.id'], ),
-    sa.ForeignKeyConstraint(['event_id'], ['platform_event.id'], ),
-    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
     op.create_table('community_post',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('author_id', sa.Integer(), nullable=True),
@@ -230,6 +206,45 @@ def upgrade():
     sa.ForeignKeyConstraint(['quiz_id'], ['quiz.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('user_challenge',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('title', sa.String(length=255), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('xp_reward', sa.Integer(), nullable=True),
+    sa.Column('points_reward', sa.Integer(), nullable=True),
+    sa.Column('duration_days', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('challenge_type', sa.String(length=50), nullable=True),
+    sa.Column('quiz_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['quiz_id'], ['quiz.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('user_quiz_attempt',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.Column('quiz_id', sa.Integer(), nullable=True),
+    sa.Column('score', sa.Integer(), nullable=True),
+    sa.Column('passed', sa.Boolean(), nullable=True),
+    sa.Column('started_at', sa.DateTime(), nullable=True),
+    sa.Column('completed_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['quiz_id'], ['quiz.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('challenge_participation',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.Column('challenge_id', sa.Integer(), nullable=True),
+    sa.Column('event_id', sa.Integer(), nullable=True),
+    sa.Column('started_at', sa.DateTime(), nullable=True),
+    sa.Column('completed_at', sa.DateTime(), nullable=True),
+    sa.Column('progress_percent', sa.Integer(), nullable=True),
+    sa.Column('is_completed', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['challenge_id'], ['user_challenge.id'], ),
+    sa.ForeignKeyConstraint(['event_id'], ['platform_event.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('choice',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('question_id', sa.Integer(), nullable=True),
@@ -238,12 +253,27 @@ def upgrade():
     sa.ForeignKeyConstraint(['question_id'], ['question.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('user_quiz_answer',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('attempt_id', sa.Integer(), nullable=True),
+    sa.Column('question_id', sa.Integer(), nullable=True),
+    sa.Column('choice_id', sa.Integer(), nullable=True),
+    sa.Column('is_correct', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['attempt_id'], ['user_quiz_attempt.id'], ),
+    sa.ForeignKeyConstraint(['choice_id'], ['choice.id'], ),
+    sa.ForeignKeyConstraint(['question_id'], ['question.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     # ### end Alembic commands ###
 
 
 def downgrade():
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_table('user_quiz_answer')
     op.drop_table('choice')
+    op.drop_table('challenge_participation')
+    op.drop_table('user_quiz_attempt')
+    op.drop_table('user_challenge')
     op.drop_table('question')
     op.drop_table('user_progress')
     op.drop_table('quiz')
@@ -262,8 +292,6 @@ def downgrade():
     op.drop_table('learning_path')
     op.drop_table('leaderboard')
     op.drop_table('community_post')
-    op.drop_table('challenge_participation')
-    op.drop_table('user_challenge')
     with op.batch_alter_table('user', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_user_username'))
         batch_op.drop_index(batch_op.f('ix_user_points'))

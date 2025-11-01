@@ -132,9 +132,11 @@ class LearningResource(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
-    type = db.Column(db.String(50), nullable=False)  # e.g., video, article, book
-    url = db.Column(db.String(512), nullable=False)
+    type = db.Column(db.String(50), nullable=False)  # e.g., video, reading, quiz
+    url = db.Column(db.String(512), nullable=True)  # Made nullable for reading/quiz types
     description = db.Column(db.Text)
+    content = db.Column(db.Text) 
+    duration = db.Column(db.String(50))  
     module_id = db.Column(db.Integer, db.ForeignKey("module.id"))
 
     module = db.relationship("Module", back_populates="resources")
@@ -146,10 +148,10 @@ class LearningResource(db.Model):
             'type': self.type,
             'url': self.url,
             'description': self.description,
+            'content': self.content,  
+            'duration': self.duration,  
             'module_id': self.module_id
-        } 
-
-
+        }
 class Module(db.Model):
     __tablename__ = "module"
 
@@ -247,6 +249,34 @@ class Choice(db.Model):
     
     def __repr__(self):
         return f"<Choice id={self.id} text='{self.text[:30]}...' correct={self.is_correct}>"
+    
+class UserQuizAttempt(db.Model):
+    __tablename__ = "user_quiz_attempt"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    quiz_id = db.Column(db.Integer, db.ForeignKey("quiz.id"))
+    score = db.Column(db.Integer)  # Percentage
+    passed = db.Column(db.Boolean)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime)
+    
+    user = db.relationship("User", backref="quiz_attempts")
+    quiz = db.relationship("Quiz", backref="attempts")
+    answers = db.relationship("UserQuizAnswer", back_populates="attempt", cascade="all, delete-orphan")
+
+class UserQuizAnswer(db.Model):
+    __tablename__ = "user_quiz_answer"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("user_quiz_attempt.id"))
+    question_id = db.Column(db.Integer, db.ForeignKey("question.id"))
+    choice_id = db.Column(db.Integer, db.ForeignKey("choice.id"))  # Which choice user selected
+    is_correct = db.Column(db.Boolean)  # Was their answer correct?
+    
+    attempt = db.relationship("UserQuizAttempt", back_populates="answers")
+    question = db.relationship("Question")
+    selected_choice = db.relationship("Choice")    
 
 
 class UserProgress(db.Model):
@@ -426,7 +456,12 @@ class UserChallenge(db.Model):
     duration_days = db.Column(db.Integer, default=7)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    challenge_type = db.Column(db.String(50), default="quiz")
+
+    quiz_id = db.Column(db.Integer, db.ForeignKey("quiz.id"), nullable=True)
+
     participations = db.relationship("ChallengeParticipation", back_populates="challenge", cascade="all, delete-orphan")
+    quiz = db.relationship("Quiz")
 
     def to_dict(self):
         return {
@@ -435,6 +470,9 @@ class UserChallenge(db.Model):
             'description': self.description,
             'xp_reward': self.xp_reward,
             'points_reward': self.points_reward,
+            'challenge_type': self.challenge_type,
+            'quiz_id': self.quiz_id,
+            'quiz_title': self.quiz.title if self.quiz else None,
             'duration_days': self.duration_days,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

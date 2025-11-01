@@ -1,7 +1,7 @@
 POINTS_CONFIG = {
     'complete_module': 50,
-    'complete_quiz': 30,
-    'pass_quiz': 50,
+    'complete_quiz': 10,
+    'pass_quiz': 20,
     'start_learning_path': 10,
     
     'create_resource': 25,

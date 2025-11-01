@@ -8,21 +8,29 @@ from utils.role_required import role_required
 
 challenges_bp = Blueprint('challenges_bp', __name__)
 
-# get active challenges
-@challenges_bp.route('/challenges/active', methods=['GET'])
+@challenges_bp.route('/active', methods=['GET'])
 def get_active_challenges():
     try:
         current_time = datetime.utcnow()
         
-        active_challenges = UserChallenge.query.filter(
-            UserChallenge.created_at >= current_time - timedelta(days=UserChallenge.duration_days)
-        ).all()
+        # Get ALL challenges first
+        all_challenges = UserChallenge.query.all()
+        
+        # Filter active ones in Python
+        active_challenges = []
+        for challenge in all_challenges:
+            challenge_end = challenge.created_at + timedelta(days=challenge.duration_days)
+            if challenge_end >= current_time:  # Challenge hasn't ended yet
+                active_challenges.append(challenge)
         
         challenges_data = []
         for challenge in active_challenges:
             participants_count = ChallengeParticipation.query.filter_by(
                 challenge_id=challenge.id
             ).count()
+            
+            days_passed = (current_time - challenge.created_at).days
+            days_remaining = max(0, challenge.duration_days - days_passed)
             
             challenges_data.append({
                 "id": challenge.id,
@@ -33,7 +41,7 @@ def get_active_challenges():
                 "duration_days": challenge.duration_days,
                 "created_at": challenge.created_at.isoformat(),
                 "participants_count": participants_count,
-                "days_remaining": max(0, challenge.duration_days - (current_time - challenge.created_at).days)
+                "days_remaining": days_remaining
             })
         
         return jsonify({
@@ -41,6 +49,7 @@ def get_active_challenges():
             "total_active": len(challenges_data)
         }), 200
     except Exception as e:
+        print(f"Error: {str(e)}")  # Add this to see the actual error
         return jsonify({"error": f"Failed to load challenges: {str(e)}"}), 500
 
 # get active platform events

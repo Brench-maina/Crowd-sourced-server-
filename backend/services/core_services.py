@@ -10,6 +10,7 @@ from models import (
     UserProgress,
     LearningPath,
     Module,
+    ChallengeParticipation,
     Leaderboard
 )
 from utils.constants import POINTS_CONFIG, XP_CONFIG, BADGE_RULES
@@ -91,7 +92,9 @@ class BadgeService:
             "complete_module": "first_module",
             "complete_quiz": "first_quiz",
             "create_learning_path": "first_learning_path",
-            "daily_login": "first_login"
+            "daily_login": "first_login",
+            "participate_challenge": "first_challenge_participation",
+            "complete_challenge": "first_challenge_completed"
         }
 
         if action in trigger_map:
@@ -140,6 +143,19 @@ class BadgeService:
         if BadgeService._has_completed_full_path(user):
             BadgeService.award_badge(user, "subject_master")
             badges.append("subject_master")
+
+        participated_challenges = ChallengeParticipation.query.filter_by(user_id=user.id).count()
+        if participated_challenges >= 5 and not BadgeService.has_badge(user, "challenge_warrior"):
+            BadgeService.award_badge(user, "challenge_warrior")
+            badges.append("challenge_warrior")
+
+        completed_challenge_quizzes = ChallengeParticipation.query.filter_by(
+            user_id=user.id, is_completed=True
+        ).count()
+        if completed_challenge_quizzes >= 3 and not BadgeService.has_badge(user, "challenge_conqueror"):
+            BadgeService.award_badge(user, "challenge_conqueror")
+            badges.append("challenge_conqueror")
+  
 
         return badges
 
