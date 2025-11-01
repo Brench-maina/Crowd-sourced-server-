@@ -380,3 +380,91 @@ def get_pending_paths():
         "total_pages": pending_paths.pages,
         "total_items": pending_paths.total
     }), 200
+
+@learning_paths_bp.route('/stats', methods=['GET'])
+@jwt_required()
+def get_user_stats():
+    """Return basic contributor stats"""
+    try:
+        current_user_identity = get_jwt_identity()
+        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
+        user = User.query.get(user_id)
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Example contributor stats
+        total_paths = LearningPath.query.filter_by(creator_id=user_id).count()
+        approved_paths = LearningPath.query.filter_by(creator_id=user_id, status="approved").count()
+        total_views = sum(lp.views for lp in LearningPath.query.filter_by(creator_id=user_id).all() if hasattr(lp, "views"))
+        contribution_xp = getattr(user, "xp", 0)  # assuming your User model tracks XP
+        avg_rating = getattr(user, "avg_rating", 4.7)  # placeholder if not yet implemented
+
+        return jsonify({
+            "xp": contribution_xp,
+            "level": user.level if hasattr(user, "level") else 1,
+            "total_resources": total_paths,
+            "approved_resources": approved_paths,
+            "total_views": total_views,
+            "avg_rating": avg_rating
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+# =============================
+# 📊 Contributor Stats Endpoint
+# =============================
+@learning_paths_bp.route("/stats", methods=["GET"])
+@jwt_required()
+def get_contributor_stats():
+    try:
+        current_user_identity = get_jwt_identity()
+        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
+        user = User.query.get(user_id)
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # --- Basic stats ---
+        total_paths = LearningPath.query.filter_by(creator_id=user_id).count()
+        approved_paths = LearningPath.query.filter_by(
+            creator_id=user_id, status=ContentStatusEnum.approved
+        ).count()
+
+        # --- Total views (if you track them on LearningPath) ---
+        total_views = 0
+        paths = LearningPath.query.filter_by(creator_id=user_id).all()
+        for path in paths:
+            total_views += getattr(path, "views", 0)
+
+        # --- XP and Level ---
+        # If your PointsService is tracking XP per user
+        contribution_xp = getattr(user, "xp", 0)
+        # Level formula: 1 level per 1000 XP (example)
+        level = contribution_xp // 1000 + 1
+
+        # --- Average rating (if you track it) ---
+        avg_rating = getattr(user, "avg_rating", None)
+        if avg_rating is None:
+            # fallback: compute from paths if ratings exist
+            total_rating = 0
+            total_count = 0
+            for path in paths:
+                if hasattr(path, "rating") and path.rating is not None:
+                    total_rating += path.rating
+                    total_count += 1
+            avg_rating = round(total_rating / total_count, 1) if total_count > 0 else 0
+
+        # ✅ Return formatted data
+        return jsonify({
+            "xp": contribution_xp,
+            "level": level,
+            "total_resources": total_paths,
+            "approved_resources": approved_paths,
+            "total_views": total_views,
+            "avg_rating": avg_rating
+        }), 200
+
+    except Exception as e:
+        print(f"Error fetching contributor stats: {e}")
+        return jsonify({"error": str(e)}), 500
