@@ -11,6 +11,64 @@ learning_paths_bp = Blueprint('learning_paths_bp', __name__)
 def test_learning():
     return jsonify({"message": "Learning route working!"})
 
+# CREATE Learning Path (Contributor)
+@learning_paths_bp.route('/paths', methods=['POST'])
+@jwt_required()
+def create_learning_path():
+    try:
+        current_user_identity = get_jwt_identity()
+        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
+        
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        title = data.get('title', '').strip()
+        description = data.get('description', '').strip()
+        
+        # Validation
+        if not title or len(title) < 5:
+            return jsonify({"error": "Title must be at least 5 characters long"}), 400
+        
+        if not description:
+            return jsonify({"error": "Description is required"}), 400
+        
+        # Create new learning path
+        new_path = LearningPath(
+            title=title,
+            description=description,
+            creator_id=user_id,
+            status=ContentStatusEnum.pending,
+            is_published=False,
+            created_at=datetime.utcnow()
+        )
+        
+        db.session.add(new_path)
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Learning path created successfully",
+            "path": {
+                "id": new_path.id,
+                "title": new_path.title,
+                "description": new_path.description,
+                "status": new_path.status.value,
+                "is_published": new_path.is_published
+            }
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating learning path: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to create learning path: {str(e)}"}), 500
+
 # GET All Published Learning Paths
 @learning_paths_bp.route("/paths", methods=["GET"])
 def get_learning_paths():
@@ -71,6 +129,102 @@ def get_learning_paths():
         "paths": paths_list
     })
 
+# GET Modules for a Learning Path
+@learning_paths_bp.route('/<int:path_id>/modules', methods=['GET'])
+@jwt_required()
+def get_path_modules(path_id):
+    """Get all modules for a specific learning path"""
+    try:
+        path = LearningPath.query.get(path_id)
+        if not path:
+            return jsonify({"error": "Learning path not found"}), 404
+        
+        # Get current user to check permissions
+        current_user_identity = get_jwt_identity()
+        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
+        user = User.query.get(user_id)
+        
+        # Check if user is the creator or admin
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            # If not creator/admin, only show modules for published paths
+            if not path.is_published:
+                return jsonify({"error": "Access denied"}), 403
+        
+        modules = Module.query.filter_by(learning_path_id=path_id).order_by(Module.id).all()
+        
+        modules_list = [{
+            "id": module.id,
+            "title": module.title,
+            "description": module.description
+        } for module in modules]
+        
+        return jsonify(modules_list), 200
+        
+    except Exception as e:
+        print(f"Error fetching modules: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch modules: {str(e)}"}), 500
+
+# CREATE Module for a Learning Path
+@learning_paths_bp.route('/<int:path_id>/modules', methods=['POST'])
+@jwt_required()
+def create_module(path_id):
+    """Create a new module for a learning path"""
+    try:
+        current_user_identity = get_jwt_identity()
+        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
+        
+        path = LearningPath.query.get(path_id)
+        if not path:
+            return jsonify({"error": "Learning path not found"}), 404
+        
+        # Debug logging
+        print(f"DEBUG - User ID: {user_id} (type: {type(user_id)})")
+        print(f"DEBUG - Path Creator ID: {path.creator_id} (type: {type(path.creator_id)})")
+        
+        # Check if user is the creator - ensure both are same type
+        if int(path.creator_id) != int(user_id):
+            user = User.query.get(user_id)
+            # Allow admins too
+            if not (user and user.role == "admin"):
+                return jsonify({"error": "Only the path creator can add modules"}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        title = data.get('title', '').strip()
+        description = data.get('description', '').strip()
+        
+        if not title or len(title) < 3:
+            return jsonify({"error": "Module title must be at least 3 characters"}), 400
+        
+        new_module = Module(
+            title=title,
+            description=description,
+            learning_path_id=path_id
+        )
+        
+        db.session.add(new_module)
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Module created successfully",
+            "module": {
+                "id": new_module.id,
+                "title": new_module.title,
+                "description": new_module.description
+            }
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating module: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to create module: {str(e)}"}), 500
+
 # Unfollow Learning Path
 @learning_paths_bp.route('/paths/<int:path_id>/unfollow', methods=['POST'])
 @jwt_required()
@@ -98,14 +252,12 @@ def unfollow_path(path_id):
         db.session.rollback()
         return jsonify({"error": "Failed to unfollow learning path"}), 500
 
-# GET user's followed paths (FIXED)
+# GET user's followed paths 
 @learning_paths_bp.route("/my-paths", methods=["GET"])
 @jwt_required()
 def get_my_learning_paths():
     try:
-       
         current_user_identity = get_jwt_identity()
-       
         user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
         
         user = User.query.get(user_id)
@@ -118,7 +270,6 @@ def get_my_learning_paths():
         for path in user.followed_paths:
             # Only include published paths
             if path.is_published:
-                
                 completed_modules = sum(
                     1 for module in path.modules if module in user.completed_modules
                 )
@@ -139,7 +290,7 @@ def get_my_learning_paths():
     except Exception as e:
         return jsonify({"error": "Failed to retrieve followed paths", "details": str(e)}), 500
 
-# Admin Review Learning Paths - FIXED VERSION
+# Admin Review Learning Paths
 @learning_paths_bp.route('/admin/paths/<int:path_id>/review', methods=['PUT'])
 @jwt_required()
 @role_required("admin")
@@ -166,12 +317,11 @@ def review_learning_path(path_id):
             path.reviewed_by = user_id
             path.rejection_reason = None
             
-            # Award points to creator - FIX: Check if creator exists
+            # Award points to creator
             if path.creator:
                 try:
                     PointsService.award_points(path.creator, 'learning_path_approved')
                 except Exception as points_error:
-                    # Log the error but don't fail the approval
                     print(f"Failed to award points: {points_error}")
             
         elif action == "reject":
@@ -199,11 +349,10 @@ def review_learning_path(path_id):
         
     except Exception as e:
         db.session.rollback()
-        print(f"Error reviewing learning path: {str(e)}")  # Server-side logging
+        print(f"Error reviewing learning path: {str(e)}")
         import traceback
-        traceback.print_exc()  # Print full traceback for debugging
+        traceback.print_exc()
         return jsonify({"error": f"Failed to review learning path: {str(e)}"}), 500
-    
 
 # Admin Get pending paths
 @learning_paths_bp.route('/admin/paths/pending', methods=['GET'])

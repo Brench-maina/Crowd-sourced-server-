@@ -3,7 +3,7 @@ from models import (
     User, RoleEnum, Badge, LearningPath, Module, Quiz, Question, Choice,
     CommunityPost, CommunityComment, UserProgress, UserBadge, Leaderboard,
     PlatformEvent, UserChallenge, ChallengeParticipation, PointsLog,
-    LearningResource, UserQuizAttempt, UserQuizAnswer
+    LearningResource, UserQuizAttempt, UserQuizAnswer, ContentStatusEnum
 )
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
@@ -53,8 +53,23 @@ def seed_database():
     print("✅ Badges added.")
 
     # === LEARNING PATHS & MODULES ===
-    lp1 = LearningPath(title="Python Basics", description="Learn the basics of Python programming.")
-    lp2 = LearningPath(title="Web Development", description="Introduction to building websites.")
+    # FIXED: Added creator_id, status, and is_published
+    lp1 = LearningPath(
+        title="Python Basics", 
+        description="Learn the basics of Python programming.",
+        creator_id=users[1].id,  # Contributor created this
+        status=ContentStatusEnum.approved,
+        is_published=True,
+        created_at=datetime.utcnow()
+    )
+    lp2 = LearningPath(
+        title="Web Development", 
+        description="Introduction to building websites.",
+        creator_id=users[1].id,  # Contributor created this
+        status=ContentStatusEnum.approved,
+        is_published=True,
+        created_at=datetime.utcnow()
+    )
 
     db.session.add_all([lp1, lp2])
     db.session.commit()
@@ -91,7 +106,6 @@ def seed_database():
     db.session.add(quiz1)
     db.session.commit()
 
-    # FIXED: Changed 'content' to 'text' for Question model
     q1 = Question(text="What is the correct file extension for Python files?", quiz_id=quiz1.id)
     q2 = Question(text="Which keyword is used to define a function in Python?", quiz_id=quiz1.id)
 
@@ -109,9 +123,11 @@ def seed_database():
 
     # === COMMUNITY POSTS & COMMENTS ===
     post = CommunityPost(title="Learning Python", content="Python is so fun!", author_id=users[2].id)
-    comment = CommunityComment(content="Absolutely! Keep going 🚀", author_id=users[1].id, post_id=1)
-
-    db.session.add_all([post, comment])
+    db.session.add(post)
+    db.session.commit()
+    
+    comment = CommunityComment(content="Absolutely! Keep going 🚀", author_id=users[1].id, post_id=post.id)
+    db.session.add(comment)
     db.session.commit()
     print("✅ Community Posts and Comments added.")
 
@@ -162,6 +178,10 @@ def seed_database():
     db.session.commit()
 
     print("🎉 Seeding complete!")
+    print("\n📝 Login credentials:")
+    print("   Admin: admin@learnplatform.com / admin123")
+    print("   Contributor: contributor@learnplatform.com / contrib123")
+    print("   Learner: learner@learnplatform.com / learner123")
 
 
 if __name__ == "__main__":
