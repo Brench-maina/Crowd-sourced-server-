@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from models import db, User, Module, UserProgress, LearningPath
 from services.core_services import PointsService
-
+from flask_cors import cross_origin  # ✅ Add this import
 
 progress_bp = Blueprint('progress_bp', __name__)
 
@@ -64,3 +64,30 @@ def get_path_progress(path_id):
         "overall_completion": round(overall, 2),
         "progress": progress_data
     }), 200
+
+
+@progress_bp.route('/analytics', methods=['GET', 'OPTIONS'])
+@cross_origin(origin='http://localhost:5173')  # ✅ Explicitly allow your frontend
+@jwt_required()
+def get_progress_analytics():
+    """Return overall learning analytics for current user"""
+    try:
+        current_user = get_jwt_identity()
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user
+
+        # ✅ Example analytics data
+        total_modules = UserProgress.query.filter_by(user_id=user_id).count()
+        completed_modules = UserProgress.query.filter_by(user_id=user_id, completion_percent=100).count()
+        completion_rate = round((completed_modules / total_modules) * 100, 2) if total_modules > 0 else 0
+
+        # You can add more advanced metrics here if needed
+        return jsonify({
+            "total_modules": total_modules,
+            "completed_modules": completed_modules,
+            "completion_rate": completion_rate
+        }), 200
+
+    except Exception as e:
+        print(f"Error in analytics: {e}")
+        return jsonify({"error": str(e)}), 500
+
