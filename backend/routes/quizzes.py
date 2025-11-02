@@ -7,11 +7,10 @@ from models import (
 )
 from utils.role_required import role_required
 from services.core_services import PointsService, BadgeService
-from services.quiz_services import QuizService
 
 quizzes_bp = Blueprint("quizzes_bp", __name__)
 
-#GET all quizzes for a module
+# GET all quizzes for a module
 @quizzes_bp.route("/<int:module_id>/quizzes", methods=["GET"])
 @jwt_required()
 def get_quizzes(module_id):
@@ -19,7 +18,7 @@ def get_quizzes(module_id):
     return jsonify([q.to_dict() for q in quizzes]), 200
 
 
-#GET a specific quiz (with questions)
+# GET a specific quiz (with questions)
 @quizzes_bp.route("/<int:module_id>/quizzes/<int:quiz_id>", methods=["GET"])
 @jwt_required()
 def get_quiz(module_id, quiz_id):
@@ -39,7 +38,7 @@ def get_quiz(module_id, quiz_id):
     }), 200
 
 
-#CREATE a quiz under a module
+# CREATE a quiz under a module
 @quizzes_bp.route("/<int:module_id>/quizzes", methods=["POST"])
 @jwt_required()
 @role_required("admin", "contributor")
@@ -57,7 +56,7 @@ def create_quiz(module_id):
     return jsonify(new_quiz.to_dict()), 201
 
 
-#ADD a question to a quiz
+# ADD a question to a quiz
 @quizzes_bp.route("/<int:module_id>/quizzes/<int:quiz_id>/questions", methods=["POST"])
 @jwt_required()
 @role_required("admin", "contributor")
@@ -87,7 +86,7 @@ def add_question(module_id, quiz_id):
     return jsonify(question.to_dict()), 201
 
 
-#SUBMIT quiz attempt
+# SUBMIT quiz attempt - FIXED VERSION
 @quizzes_bp.route("/<int:module_id>/quizzes/<int:quiz_id>/attempt", methods=["POST"])
 @jwt_required()
 def submit_quiz(module_id, quiz_id):
@@ -103,10 +102,12 @@ def submit_quiz(module_id, quiz_id):
     quiz = Quiz.query.filter_by(id=quiz_id, module_id=module_id).first_or_404()
     user = User.query.get(user_id)
     
+    # Create quiz attempt
     attempt = UserQuizAttempt(user_id=user_id, quiz_id=quiz_id, started_at=datetime.utcnow())
     db.session.add(attempt)
     db.session.flush()
     
+    # Grade the quiz
     correct_count = 0
     for ans in answers:
         question = Question.query.get(ans["question_id"])
@@ -134,6 +135,7 @@ def submit_quiz(module_id, quiz_id):
     attempt.passed = passed
     attempt.completed_at = datetime.utcnow()
     
+    # Update module progress if quiz belongs to a module
     if quiz.module:
         progress = UserProgress.query.filter_by(user_id=user_id, module_id=quiz.module.id).first()
         if not progress:
@@ -145,10 +147,13 @@ def submit_quiz(module_id, quiz_id):
             progress.completed_at = datetime.utcnow()
         db.session.add(progress)
     
+    # Check if this quiz is part of a challenge
     challenge = UserChallenge.query.filter_by(quiz_id=quiz_id).first()
+    is_challenge_quiz = challenge is not None
     challenge_completed = False
     
-    if challenge:
+    if is_challenge_quiz:
+        # Handle challenge participation
         participation = ChallengeParticipation.query.filter_by(
             user_id=user_id, 
             challenge_id=challenge.id
@@ -160,8 +165,10 @@ def submit_quiz(module_id, quiz_id):
                 challenge_id=challenge.id,
                 started_at=datetime.utcnow()
             )
-            BadgeService.check_badges(user, "participate_challenge")  
-        
+            db.session.add(participation)
+            # Award participation badge
+            PointsService.award_points(user, "participate_challenge", metadata=f"Challenge: {challenge.title}")
+         
         participation.progress_percent = 100
         participation.is_completed = passed
         if passed:
@@ -172,54 +179,42 @@ def submit_quiz(module_id, quiz_id):
     
     db.session.commit()
     
-    if challenge and challenge_completed:
-        PointsService.award_points(
-            user, "complete_challenge", 
-            points=challenge.points_reward,
-            metadata=f"Challenge: {challenge.title}"
-        )
-        PointsService.award_xp_only(
-            user, "complete_challenge",
-            xp=challenge.xp_reward,
-            metadata=f"Challenge: {challenge.title}"
-        )
-        if correct_count > 0:
+    
+    if is_challenge_quiz:
+        if challenge_completed:
             PointsService.award_points(
-                user, "challenge_bonus",
-                points=correct_count * 15,
-                metadata=f"Challenge: {challenge.title} - {correct_count} correct"
+                user, 
+                "complete_challenge", 
+                metadata=f"Challenge: {challenge.title}"
             )
-            PointsService.award_xp(
-                user, "challenge_bonus",
-                xp=correct_count * 10,
-                metadata=f"Challenge: {challenge.title} - {correct_count} correct"
-            )
-    elif passed:
-        PointsService.award_points(user, "pass_quiz", points=50, metadata=f"Quiz: {quiz.title}")
-        PointsService.award_xp_only(user, "pass_quiz", xp=150, metadata=f"Quiz: {quiz.title}")
         
         if correct_count > 0:
             PointsService.award_points(
-                user, "quiz_correct_answers",
-                points=correct_count * 10,
-                metadata=f"Quiz: {quiz.title} - {correct_count} correct"
+                user, 
+                "challenge_bonus",
+                metadata=f"Challenge: {challenge.title} - {correct_count} correct"
             )
-            PointsService.award_xp_only(
-                user, "quiz_correct_answers",
-                xp=correct_count * 5,
-                metadata=f"Quiz: {quiz.title} - {correct_count} correct"
-            )
-        
-        if correct_count == total_questions:
-            PointsService.award_points(user, "quiz_perfect", points=25, metadata=f"Perfect: {quiz.title}")
-            PointsService.award_xp_only(user, "quiz_perfect", xp=50, metadata=f"Perfect: {quiz.title}")
     else:
+        if passed:
+            PointsService.award_points(
+                user, 
+                "pass_quiz", 
+                metadata=f"Quiz: {quiz.title}"
+            )
+        
         if correct_count > 0:
             PointsService.award_points(
-                user,
-                "quiz_attempt",
-                points=correct_count * 5,
-                metadata=f"Quiz: {quiz.title} - Attempted"
+                user, 
+                "quiz_correct_answers",
+                metadata=f"Quiz: {quiz.title} - {correct_count}/{total_questions} correct"
+            )
+        
+        # Perfect score bonus
+        if correct_count == total_questions:
+            PointsService.award_points(
+                user, 
+                "quiz_perfect", 
+                metadata=f"Perfect Score: {quiz.title}"
             )
     
     return jsonify({
@@ -228,11 +223,12 @@ def submit_quiz(module_id, quiz_id):
         "passed": attempt.passed,
         "correct_answers": correct_count,
         "total_questions": total_questions,
+        "is_challenge": is_challenge_quiz,
         "challenge_completed": challenge.title if (challenge and challenge_completed) else None
     }), 200
 
 
-#GET all attempts for a quiz
+# GET all attempts for a quiz
 @quizzes_bp.route("/<int:module_id>/quizzes/<int:quiz_id>/attempts", methods=["GET"])
 @jwt_required()
 def get_quiz_attempts(module_id, quiz_id):
@@ -250,7 +246,7 @@ def get_quiz_attempts(module_id, quiz_id):
     return jsonify(data), 200
 
 
-#Admin: Link a quiz to a challenge
+# Admin: Link a quiz to a challenge
 @quizzes_bp.route("/challenges/<int:challenge_id>/link-quiz", methods=["POST"])
 @jwt_required()
 @role_required("admin")

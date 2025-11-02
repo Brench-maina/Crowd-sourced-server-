@@ -6,95 +6,99 @@ from datetime import datetime, timedelta
 
 leaderboard_bp = Blueprint('leaderboard', __name__, url_prefix='/leaderboard')
 
-
 def get_leaderboard_data(current_user_id, page=1, per_page=20, days_ago=None):
     """
     Helper function to get leaderboard data
-    If days_ago is None, returns all-time leaderboard
-    Otherwise returns leaderboard for the specified time period
     """
-    # Get leaderboard with user info
-    query = (
-        db.session.query(Leaderboard, User)
-        .join(User, Leaderboard.user_id == User.id)
-        .filter(User.role == RoleEnum.learner)
-    )
-    
-    # For time-based leaderboards, we would need to filter by date
-    # This requires PointsLog entries with created_at timestamps
-    # For now, we'll use the all-time leaderboard for all timeframes
-    # TODO: Implement time-based filtering using PointsLog
-    
-    query = query.order_by(Leaderboard.rank)
-    paginated = query.paginate(page=page, per_page=per_page, error_out=False)
-    
-    # Get current user's leaderboard entry
-    current_user_entry = (
-        db.session.query(Leaderboard, User)
-        .join(User, Leaderboard.user_id == User.id)
-        .filter(Leaderboard.user_id == current_user_id)
-        .first()
-    )
-    
-    # Get total learners count
-    total_learners = (
-        db.session.query(Leaderboard)
-        .join(User, Leaderboard.user_id == User.id)
-        .filter(User.role == RoleEnum.learner)
-        .count()
-    )
-    
-    # Format leaderboard data
-    leaderboard_data = []
-    for leaderboard_entry, user in paginated.items:
-        leaderboard_data.append({
-            "rank": leaderboard_entry.rank,
-            "user_id": user.id,
-            "username": user.username,
-            "points": user.points,
-            "xp": user.xp,
-            "level": (user.xp // 500) + 1,
-            "is_current_user": user.id == current_user_id
-        })
-    
-    # Calculate current user stats
-    current_user_data = None
-    if current_user_entry:
-        entry, user = current_user_entry
+    try:
+        # First, ensure leaderboard is up to date
+        from services.core_services import LeaderboardService
+        LeaderboardService.update_all_ranks()
         
-        # Find next rank user to calculate points gap
-        next_rank_entry = (
+        # Get leaderboard with user info - ensure we only get users that exist
+        query = (
             db.session.query(Leaderboard, User)
             .join(User, Leaderboard.user_id == User.id)
-            .filter(
-                User.role == RoleEnum.learner,
-                Leaderboard.rank == entry.rank - 1
-            )
+            .filter(User.role == RoleEnum.learner)
+            .filter(User.username.isnot(None))  # Ensure username is not null
+        )
+        
+        query = query.order_by(Leaderboard.rank.asc())
+        paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        # Get current user's leaderboard entry
+        current_user_entry = (
+            db.session.query(Leaderboard, User)
+            .join(User, Leaderboard.user_id == User.id)
+            .filter(Leaderboard.user_id == current_user_id)
             .first()
         )
         
-        points_to_next_rank = None
-        if next_rank_entry:
-            _, next_user = next_rank_entry
-            points_to_next_rank = next_user.points - user.points + 1
+        # Get total learners count (only those with usernames)
+        total_learners = (
+            db.session.query(Leaderboard)
+            .join(User, Leaderboard.user_id == User.id)
+            .filter(User.role == RoleEnum.learner)
+            .filter(User.username.isnot(None))
+            .count()
+        )
         
-        current_user_data = {
-            "rank": entry.rank,
-            "points": user.points,
-            "xp": user.xp,
-            "points_to_next_rank": points_to_next_rank,
-            "total_learners": total_learners
+        # Format leaderboard data with null checks
+        leaderboard_data = []
+        for leaderboard_entry, user in paginated.items:
+            if user and user.username:  # Only include users with usernames
+                leaderboard_data.append({
+                    "rank": leaderboard_entry.rank,
+                    "user_id": user.id,
+                    "username": user.username,
+                    "points": user.points or 0,
+                    "xp": user.xp or 0,
+                    "level": ((user.xp or 0) // 500) + 1,
+                    "is_current_user": user.id == current_user_id
+                })
+        
+        # Calculate current user stats
+        current_user_data = None
+        if current_user_entry:
+            entry, user = current_user_entry
+            if user and user.username:  # Only if user exists and has username
+                # Find next rank user to calculate points gap
+                next_rank_entry = (
+                    db.session.query(Leaderboard, User)
+                    .join(User, Leaderboard.user_id == User.id)
+                    .filter(
+                        User.role == RoleEnum.learner,
+                        Leaderboard.rank == entry.rank - 1
+                    )
+                    .first()
+                )
+                
+                points_to_next_rank = None
+                if next_rank_entry and entry.rank > 1:
+                    _, next_user = next_rank_entry
+                    points_to_next_rank = max(0, (next_user.points or 0) - (user.points or 0) + 1)
+                
+                current_user_data = {
+                    "rank": entry.rank,
+                    "points": user.points or 0,
+                    "xp": user.xp or 0,
+                    "level": ((user.xp or 0) // 500) + 1,
+                    "points_to_next_rank": points_to_next_rank,
+                    "total_learners": total_learners
+                }
+        
+        return {
+            "leaderboard": leaderboard_data,
+            "current_user": current_user_data,
+            "page": page,
+            "total_pages": paginated.pages,
+            "total_players": total_learners
         }
+        
+    except Exception as e:
+        print(f"Error in get_leaderboard_data: {str(e)}")
+        raise e
     
-    return {
-        "leaderboard": leaderboard_data,
-        "current_user": current_user_data,
-        "page": page,
-        "total_pages": paginated.pages,
-        "total_players": paginated.total
-    }
-
-
 @leaderboard_bp.route('/weekly', methods=['GET'])
 @jwt_required()
 def get_weekly_leaderboard():

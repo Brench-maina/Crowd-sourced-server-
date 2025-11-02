@@ -181,7 +181,7 @@ def join_event(event_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Failed to join event: {str(e)}"}), 500
-
+        
 # GET user's challenge participations
 @challenges_bp.route('/my-challenges', methods=['GET'])
 @jwt_required()
@@ -190,9 +190,10 @@ def get_my_challenges():
         current_user = get_jwt_identity()
         user_id = current_user["id"]
         
+        # Get all participations for the user
         participations = ChallengeParticipation.query.filter_by(
             user_id=user_id
-        ).join(UserChallenge).join(PlatformEvent, isouter=True).all()
+        ).all()
         
         participations_data = []
         for participation in participations:
@@ -204,24 +205,31 @@ def get_my_challenges():
                 "completed_at": participation.completed_at.isoformat() if participation.completed_at else None
             }
             
-            if participation.challenge:
-                challenge_data.update({
-                    "type": "challenge",
-                    "id": participation.challenge.id,
-                    "title": participation.challenge.title,
-                    "description": participation.challenge.description,
-                    "points_reward": participation.challenge.points_reward,
-                    "xp_reward": participation.challenge.xp_reward
-                })
-            elif participation.event:
-                challenge_data.update({
-                    "type": "event",
-                    "id": participation.event.id,
-                    "name": participation.event.name,
-                    "description": participation.event.description,
-                    "reward_points": participation.event.reward_points,
-                    "end_date": participation.event.end_date.isoformat()
-                })
+            # Check if it's a challenge participation
+            if participation.challenge_id:
+                challenge = UserChallenge.query.get(participation.challenge_id)
+                if challenge:
+                    challenge_data.update({
+                        "type": "challenge",
+                        "challenge_id": challenge.id,
+                        "title": challenge.title,
+                        "description": challenge.description,
+                        "points_reward": challenge.points_reward,
+                        "xp_reward": challenge.xp_reward
+                    })
+            
+            # Check if it's an event participation
+            elif participation.event_id:
+                event = PlatformEvent.query.get(participation.event_id)
+                if event:
+                    challenge_data.update({
+                        "type": "event",
+                        "event_id": event.id,
+                        "name": event.name,
+                        "description": event.description,
+                        "reward_points": event.reward_points,
+                        "end_date": event.end_date.isoformat()
+                    })
             
             participations_data.append(challenge_data)
         
