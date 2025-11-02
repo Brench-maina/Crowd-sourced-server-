@@ -15,8 +15,11 @@ POINTS_CONFIG = {
     'daily_login': 5,
     
     'complete_challenge': 200,
+    'participate_challenge': 50,  
     'participate_event': 50,
     'win_leaderboard_weekly': 300,
+    
+    'earn_badge': 10,  
 }
 
 XP_CONFIG = {
@@ -28,6 +31,7 @@ XP_CONFIG = {
     'daily_streak_7_days': 200,
     'daily_streak_30_days': 500,
 }
+
 BADGE_RULES = {
     "first_module": {
         "name": "First Module Completed",
@@ -44,6 +48,14 @@ BADGE_RULES = {
     "first_login": {
         "name": "Welcome Aboard!",
         "description": "Awarded on your first login."
+    },
+    "first_challenge_participation": {  
+        "name": "Challenge Rookie",
+        "description": "Awarded for participating in your first challenge."
+    },
+    "first_challenge_completed": {  
+        "name": "Challenge Champion",
+        "description": "Awarded for completing your first challenge."
     },
     "quiz_master": {
         "name": "Quiz Master",
@@ -64,5 +76,13 @@ BADGE_RULES = {
     "subject_master": {
         "name": "Subject Master",
         "description": "Awarded for completing all modules in a subject category."
+    },
+    "challenge_warrior": {  
+        "name": "Challenge Warrior",
+        "description": "Awarded for participating in 5 challenges."
+    },
+    "challenge_conqueror": { 
+        "name": "Challenge Conqueror",
+        "description": "Awarded for completing 3 challenges successfully."
     }
 }

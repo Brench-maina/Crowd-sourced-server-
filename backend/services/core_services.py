@@ -83,8 +83,6 @@ class BadgeService:
 
     @staticmethod
     def check_badges(user, action):
-       
-
         awarded_badges = []
 
         # Direct trigger badges
@@ -155,7 +153,6 @@ class BadgeService:
         if completed_challenge_quizzes >= 3 and not BadgeService.has_badge(user, "challenge_conqueror"):
             BadgeService.award_badge(user, "challenge_conqueror")
             badges.append("challenge_conqueror")
-  
 
         return badges
 
@@ -219,8 +216,20 @@ class BadgeService:
         )
         db.session.add(user_badge)
 
+
+        badge_points = POINTS_CONFIG.get('earn_badge', 10)
+        user.points = (user.points or 0) + badge_points
         
-        PointsService.award_points(user, 'earn_badge', f"Badge: {badge_key}")
+        
+        points_log = PointsLog(
+            user_id=user.id,
+            points_change=badge_points,
+            reason=f"Badge earned: {badge_key}"
+        )
+        db.session.add(points_log)
+        
+        # Update leaderboard after badge points
+        LeaderboardService.update_user_rank(user)
 
         return badge_key
 
@@ -263,7 +272,6 @@ class BadgeService:
         progress["streak_30_days"] = user.streak_days >= 30
 
         return progress
-
 
 class LeaderboardService:
     @staticmethod
