@@ -24,4 +24,4 @@ def register_blueprints(app):
     app.register_blueprint(badges_bp, url_prefix="/badges")
     app.register_blueprint(challenges_bp, url_prefix="/challenges")
     app.register_blueprint(moderation_bp, url_prefix="/moderation")
-    app.register_blueprint(quizzes_bp, url_prefix="/quizzes")
+    app.register_blueprint(quizzes_bp, url_prefix="/modules")
