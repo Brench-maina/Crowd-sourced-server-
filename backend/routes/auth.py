@@ -12,7 +12,7 @@ auth_bp = Blueprint('auth', __name__)
 def test_auth():
     return jsonify({"message": "auth route working!"})
 
- 
+
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -49,8 +49,10 @@ def register():
     db.session.add(new_user)
     db.session.commit()
 
+    # Create JWT token with role included
     access_token = create_access_token(
-      identity=str(new_user.id),
+        identity=str(new_user.id),
+        additional_claims={"role": new_user.role.value},  # ✅ Include role
         expires_delta=timedelta(hours=8)
     )
 
@@ -68,7 +70,7 @@ def register():
         }
     }), 200
 
- 
+
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -85,9 +87,10 @@ def login():
     # Update streak
     user.update_streak()
 
-    # Create JWT token (identity as string to avoid errors)
+    # Create JWT token with role included
     access_token = create_access_token(
         identity=str(user.id),
+        additional_claims={"role": user.role.value},  # ✅ Include role
         expires_delta=timedelta(hours=8)
     )
 
@@ -109,7 +112,6 @@ def login():
 @auth_bp.route('/me', methods=['GET'])
 @jwt_required()
 def get_current_user():
-    # Convert back to integer
     current_user_id = int(get_jwt_identity())
     user = User.query.get(current_user_id)
     if not user:
@@ -130,4 +132,3 @@ def get_current_user():
 @jwt_required()
 def logout():
     return jsonify({'message': 'Logout successful'})
-

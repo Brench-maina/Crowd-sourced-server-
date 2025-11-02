@@ -5,7 +5,9 @@ from models import db, LearningPath, ContentStatusEnum, User, UserProgress, Modu
 from utils.role_required import role_required
 from services.core_services import PointsService
 
+
 learning_paths_bp = Blueprint('learning_paths_bp', __name__)
+
 
 @learning_paths_bp.route('/test')
 def test_learning():
@@ -225,6 +227,7 @@ def create_module(path_id):
         traceback.print_exc()
         return jsonify({"error": f"Failed to create module: {str(e)}"}), 500
 
+
 # Unfollow Learning Path
 @learning_paths_bp.route('/paths/<int:path_id>/unfollow', methods=['POST'])
 @jwt_required()
@@ -381,6 +384,157 @@ def get_pending_paths():
         "total_items": pending_paths.total
     }), 200
 
+# ------------------------------------------------------------
+# ✏️ UPDATE Learning Path (creator or admin)
+# ------------------------------------------------------------
+@learning_paths_bp.route('/paths/<int:path_id>', methods=['PUT'])
+@jwt_required()
+def update_learning_path(path_id):
+    try:
+        current_user_identity = get_jwt_identity()
+        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
+        user = User.query.get(user_id)
+
+        path = LearningPath.query.get(path_id)
+        if not path:
+            return jsonify({"error": "Learning path not found"}), 404
+
+        # Only creator or admin can update
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            return jsonify({"error": "Not authorized to edit this learning path"}), 403
+
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        title = data.get("title", "").strip()
+        description = data.get("description", "").strip()
+
+        # Validation
+        if not title or len(title) < 5:
+            return jsonify({"error": "Title must be at least 5 characters long"}), 400
+        if not description:
+            return jsonify({"error": "Description is required"}), 400
+
+        # Update path
+        path.title = title
+        path.description = description
+        path.updated_at = datetime.utcnow()
+
+        db.session.commit()
+
+        return jsonify({
+            "message": "Learning path updated successfully",
+            "path": {
+                "id": path.id,
+                "title": path.title,
+                "description": path.description,
+                "is_published": path.is_published,
+                "status": path.status.value
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error updating learning path: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to update learning path: {str(e)}"}), 500
+
+
+# ------------------------------------------------------------
+# ✏️ UPDATE Module (creator or admin)
+# ------------------------------------------------------------
+# Update Module
+@learning_paths_bp.route('/modules/<int:module_id>', methods=['PUT'])
+@jwt_required()
+def update_module(module_id):
+    try:
+        current_user = get_jwt_identity()
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user
+        user = User.query.get(user_id)
+
+        module = Module.query.get(module_id)
+        if not module:
+            return jsonify({"error": "Module not found"}), 404
+
+        path = LearningPath.query.get(module.learning_path_id)
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            return jsonify({"error": "Not authorized to update this module"}), 403
+
+        data = request.get_json()
+        module.title = data.get("title", module.title)
+        module.description = data.get("description", module.description)
+        db.session.commit()
+
+        return jsonify({"message": "Module updated successfully", "module": {
+            "id": module.id, "title": module.title, "description": module.description
+        }}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+# ------------------------------------------------------------
+# 🗑️ DELETE Learning Path (creator or admin)
+# ------------------------------------------------------------
+@learning_paths_bp.route('/paths/<int:path_id>', methods=['DELETE'])
+@jwt_required()
+def delete_learning_path(path_id):
+    try:
+        current_user = get_jwt_identity()
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user
+        user = User.query.get(user_id)
+
+        path = LearningPath.query.get(path_id)
+        if not path:
+            return jsonify({"error": "Learning path not found"}), 404
+
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            return jsonify({"error": "Not authorized to delete this path"}), 403
+
+        db.session.delete(path)
+        db.session.commit()
+
+        return jsonify({"message": "Learning path deleted successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to delete path: {str(e)}"}), 500
+
+
+# ------------------------------------------------------------
+# 🗑️ DELETE Module (creator or admin)
+# ------------------------------------------------------------
+@learning_paths_bp.route('/modules/<int:module_id>', methods=['DELETE'])
+@jwt_required()
+def delete_module(module_id):
+    try:
+        current_user = get_jwt_identity()
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user
+        user = User.query.get(user_id)
+
+        module = Module.query.get(module_id)
+        if not module:
+            return jsonify({"error": "Module not found"}), 404
+
+        path = LearningPath.query.get(module.learning_path_id)
+        if not path:
+            return jsonify({"error": "Parent learning path not found"}), 404
+
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            return jsonify({"error": "Not authorized to delete this module"}), 403
+
+        db.session.delete(module)
+        db.session.commit()
+
+        return jsonify({"message": "Module deleted successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to delete module: {str(e)}"}), 500
+
+
+
 @learning_paths_bp.route('/stats', methods=['GET'])
 @jwt_required()
 def get_user_stats():
@@ -468,3 +622,4 @@ def get_contributor_stats():
     except Exception as e:
         print(f"Error fetching contributor stats: {e}")
         return jsonify({"error": str(e)}), 500
+
