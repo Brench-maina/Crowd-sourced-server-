@@ -1,4 +1,3 @@
-# routes/__init__.py
 from flask import Blueprint
 from .auth import auth_bp
 from .user import user_bp
@@ -12,6 +11,8 @@ from .challenges import challenges_bp
 from .moderation import moderation_bp
 from .quizzes import quizzes_bp
 
+
+
 def register_blueprints(app):
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(user_bp, url_prefix="/user")
@@ -23,6 +24,4 @@ def register_blueprints(app):
     app.register_blueprint(badges_bp, url_prefix="/badges")
     app.register_blueprint(challenges_bp, url_prefix="/challenges")
     app.register_blueprint(moderation_bp, url_prefix="/moderation")
-    
-    # ⚠️ Fix: Remove "/modules" prefix for quizzes_bp
-    app.register_blueprint(quizzes_bp)
+    app.register_blueprint(quizzes_bp, url_prefix="/quizzes")
