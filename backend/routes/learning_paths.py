@@ -1,44 +1,39 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from datetime import datetime
-from models import db, LearningPath, ContentStatusEnum, User, UserProgress, Module
+from models import db, LearningPath, ContentStatusEnum, User, UserProgress, Module, LearningResource, Quiz, UserQuizAttempt, Question
 from utils.role_required import role_required
 from services.core_services import PointsService
 
 learning_paths_bp = Blueprint('learning_paths_bp', __name__)
 
-@learning_paths_bp.route('/test')
-def test_learning():
-    return jsonify({"message": "Learning route working!"})
 
-# CREATE Learning Path (Contributor)
+def get_current_user():
+    identity = get_jwt_identity()
+    user_id = identity["id"] if isinstance(identity, dict) else identity
+    return User.query.get(user_id), user_id
+
+#create Learning Path
 @learning_paths_bp.route('/paths', methods=['POST'])
 @jwt_required()
 def create_learning_path():
     try:
-        current_user_identity = get_jwt_identity()
-        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
-        
-        user = User.query.get(user_id)
+        user, user_id = get_current_user()
         if not user:
             return jsonify({"error": "User not found"}), 404
         
         data = request.get_json()
-        
         if not data:
             return jsonify({"error": "No data provided"}), 400
         
         title = data.get('title', '').strip()
         description = data.get('description', '').strip()
         
-        # Validation
         if not title or len(title) < 5:
             return jsonify({"error": "Title must be at least 5 characters long"}), 400
-        
         if not description:
             return jsonify({"error": "Description is required"}), 400
         
-        # Create new learning path
         new_path = LearningPath(
             title=title,
             description=description,
@@ -61,66 +56,47 @@ def create_learning_path():
                 "is_published": new_path.is_published
             }
         }), 201
-        
     except Exception as e:
         db.session.rollback()
-        print(f"Error creating learning path: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({"error": f"Failed to create learning path: {str(e)}"}), 500
 
 # GET All Published Learning Paths
 @learning_paths_bp.route("/paths", methods=["GET"])
 def get_learning_paths():
-    # Pagination
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 10, type=int)
     status_filter = request.args.get("status")
 
-    # Check if user is authenticated
     current_user = None
     try:
         verify_jwt_in_request(optional=True)
-        current_user_identity = get_jwt_identity()
-        if current_user_identity:
-            user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
+        identity = get_jwt_identity()
+        if identity:
+            user_id = identity["id"] if isinstance(identity, dict) else identity
             current_user = User.query.get(user_id)
     except:
-        current_user = None
+        pass
 
     query = LearningPath.query
 
     # Only admins can see unpublished paths
     if not (current_user and current_user.role == "admin"):
         query = query.filter(LearningPath.is_published == True)
-
-    # Admin can filter by status
-    if current_user and current_user.role == "admin":
+    elif status_filter:
         if status_filter == "published":
             query = query.filter(LearningPath.is_published == True)
         elif status_filter == "pending":
             query = query.filter(LearningPath.is_published == False)
 
-    # Pagination
     paths_paginated = query.paginate(page=page, per_page=per_page, error_out=False)
     
-    # Build paths list with follow status
-    paths_list = []
-    for lp in paths_paginated.items:
-        path_dict = {
-            "id": lp.id,
-            "title": lp.title,
-            "description": lp.description,
-            "is_published": lp.is_published
-        }
-        
-        # Add follow status if user is authenticated
-        if current_user:
-            path_dict["is_following"] = lp in current_user.followed_paths
-        else:
-            path_dict["is_following"] = False
-            
-        paths_list.append(path_dict)
+    paths_list = [{
+        "id": lp.id,
+        "title": lp.title,
+        "description": lp.description,
+        "is_published": lp.is_published,
+        "is_following": lp in current_user.followed_paths if current_user else False
+    } for lp in paths_paginated.items]
 
     return jsonify({
         "page": page,
@@ -133,62 +109,54 @@ def get_learning_paths():
 @learning_paths_bp.route('/<int:path_id>/modules', methods=['GET'])
 @jwt_required()
 def get_path_modules(path_id):
-    """Get all modules for a specific learning path"""
     try:
-        path = LearningPath.query.get(path_id)
-        if not path:
-            return jsonify({"error": "Learning path not found"}), 404
+        path = LearningPath.query.get_or_404(path_id)
+        user, user_id = get_current_user()
         
-        # Get current user to check permissions
-        current_user_identity = get_jwt_identity()
-        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
-        user = User.query.get(user_id)
-        
-        # Check if user is the creator or admin
+        # Check permissions
         if int(path.creator_id) != int(user_id) and user.role != "admin":
-            # If not creator/admin, only show modules for published paths
             if not path.is_published:
                 return jsonify({"error": "Access denied"}), 403
         
         modules = Module.query.filter_by(learning_path_id=path_id).order_by(Module.id).all()
         
-        modules_list = [{
-            "id": module.id,
-            "title": module.title,
-            "description": module.description
-        } for module in modules]
+        modules_list = []
+        for module in modules:
+            resource_count = LearningResource.query.filter_by(module_id=module.id).count()
+            quiz_count = Quiz.query.filter_by(module_id=module.id).count()
+            
+            module_dict = {
+                "id": module.id,
+                "title": module.title,
+                "description": module.description,
+                "resource_count": resource_count,
+                "quiz_count": quiz_count
+            }
+            
+            if path in user.followed_paths:
+                progress = UserProgress.query.filter_by(user_id=user_id, module_id=module.id).first()
+                module_dict["is_completed"] = progress.completion_percent == 100 if progress else False
+                module_dict["completion_percent"] = progress.completion_percent if progress else 0
+            else:
+                module_dict["is_completed"] = False
+                module_dict["completion_percent"] = 0
+            
+            modules_list.append(module_dict)
         
         return jsonify(modules_list), 200
-        
     except Exception as e:
-        print(f"Error fetching modules: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({"error": f"Failed to fetch modules: {str(e)}"}), 500
 
-# CREATE Module for a Learning Path
+# create Module
 @learning_paths_bp.route('/<int:path_id>/modules', methods=['POST'])
 @jwt_required()
 def create_module(path_id):
-    """Create a new module for a learning path"""
     try:
-        current_user_identity = get_jwt_identity()
-        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
+        user, user_id = get_current_user()
+        path = LearningPath.query.get_or_404(path_id)
         
-        path = LearningPath.query.get(path_id)
-        if not path:
-            return jsonify({"error": "Learning path not found"}), 404
-        
-        # Debug logging
-        print(f"DEBUG - User ID: {user_id} (type: {type(user_id)})")
-        print(f"DEBUG - Path Creator ID: {path.creator_id} (type: {type(path.creator_id)})")
-        
-        # Check if user is the creator - ensure both are same type
-        if int(path.creator_id) != int(user_id):
-            user = User.query.get(user_id)
-            # Allow admins too
-            if not (user and user.role == "admin"):
-                return jsonify({"error": "Only the path creator can add modules"}), 403
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            return jsonify({"error": "Only the path creator can add modules"}), 403
         
         data = request.get_json()
         if not data:
@@ -200,111 +168,318 @@ def create_module(path_id):
         if not title or len(title) < 3:
             return jsonify({"error": "Module title must be at least 3 characters"}), 400
         
-        new_module = Module(
-            title=title,
-            description=description,
-            learning_path_id=path_id
-        )
-        
+        new_module = Module(title=title, description=description, learning_path_id=path_id)
         db.session.add(new_module)
         db.session.commit()
         
         return jsonify({
             "message": "Module created successfully",
-            "module": {
-                "id": new_module.id,
-                "title": new_module.title,
-                "description": new_module.description
-            }
+            "module": {"id": new_module.id, "title": new_module.title, "description": new_module.description}
         }), 201
-        
     except Exception as e:
         db.session.rollback()
-        print(f"Error creating module: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({"error": f"Failed to create module: {str(e)}"}), 500
+    
+  # GET Module Details 
+@learning_paths_bp.route('/modules/<int:module_id>', methods=['GET'])
+@jwt_required()
+def get_module_details(module_id):
+    try:
+        module = Module.query.get_or_404(module_id)
+        path = LearningPath.query.get_or_404(module.learning_path_id)
+        user, user_id = get_current_user()
+        
+        # Check access
+        has_access = (
+            path.is_published or 
+            int(path.creator_id) == int(user_id) or 
+            user.role == "admin" or 
+            path in user.followed_paths
+        )
+        if not has_access:
+            return jsonify({"error": "Access denied"}), 403
+        
+        # Get resources
+        resources = LearningResource.query.filter_by(module_id=module_id).all()
+        resources_list = [{
+            "id": r.id,
+            "title": r.title,
+            "type": r.type,
+            "url": r.url,
+            "description": getattr(r, 'description', None)
+        } for r in resources]
+        
+        # Get quizzes - SIMPLIFIED
+        quizzes = Quiz.query.filter_by(module_id=module_id).all()
+        quizzes_list = []
+        for quiz in quizzes:
+            question_count = Question.query.filter_by(quiz_id=quiz.id).count()
+            user_attempt = UserQuizAttempt.query.filter_by(
+                user_id=user_id, quiz_id=quiz.id
+            ).first()  # Just get any attempt
+            
+            quizzes_list.append({
+                "id": quiz.id,
+                "title": quiz.title,
+                "description": getattr(quiz, 'description', None),
+                "question_count": question_count,
+                "has_attempted": user_attempt is not None,
+                "last_score": user_attempt.score if user_attempt else None
+            })
+        
+        # Get progress
+        progress = UserProgress.query.filter_by(user_id=user_id, module_id=module_id).first()
+        
+        return jsonify({
+            "id": module.id,
+            "title": module.title,
+            "description": module.description,
+            "resources": resources_list,
+            "quizzes": quizzes_list,
+            "is_completed": progress.completion_percent == 100 if progress else False,
+            "completion_percent": progress.completion_percent if progress else 0,
+            "learning_path": {"id": path.id, "title": path.title}
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch module details: {str(e)}"}), 500
+    
+# Update Module
+@learning_paths_bp.route('/modules/<int:module_id>', methods=['PUT'])
+@jwt_required()
+def update_module(module_id):
+    try:
+        user, user_id = get_current_user()
+        module = Module.query.get_or_404(module_id)
+        path = LearningPath.query.get_or_404(module.learning_path_id)
+        
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            return jsonify({"error": "Not authorized to update this module"}), 403
 
-# Unfollow Learning Path
+        data = request.get_json()
+        module.title = data.get("title", module.title)
+        module.description = data.get("description", module.description)
+        db.session.commit()
+
+        return jsonify({
+            "message": "Module updated successfully",
+            "module": {"id": module.id, "title": module.title, "description": module.description}
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+# Delete Module
+@learning_paths_bp.route('/modules/<int:module_id>', methods=['DELETE'])
+@jwt_required()
+def delete_module(module_id):
+    try:
+        user, user_id = get_current_user()
+        module = Module.query.get_or_404(module_id)
+        path = LearningPath.query.get_or_404(module.learning_path_id)
+
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            return jsonify({"error": "Not authorized to delete this module"}), 403
+
+        db.session.delete(module)
+        db.session.commit()
+        return jsonify({"message": "Module deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to delete module: {str(e)}"}), 500
+
+# Start Module
+@learning_paths_bp.route('/modules/<int:module_id>/start', methods=['POST'])
+@jwt_required()
+def start_module(module_id):
+    try:
+        user, user_id = get_current_user()
+        module = Module.query.get_or_404(module_id)
+        path = LearningPath.query.get_or_404(module.learning_path_id)
+        
+        if path not in user.followed_paths:
+            return jsonify({"error": "You must follow the learning path first"}), 403
+        
+        progress = UserProgress.query.filter_by(user_id=user_id, module_id=module_id).first()
+        
+        if not progress:
+            progress = UserProgress(user_id=user_id, module_id=module_id, completion_percent=0)
+            db.session.add(progress)
+            db.session.commit()
+            return jsonify({"message": "Module started", "completion_percent": 0}), 200
+        
+        return jsonify({"message": "Module already in progress", "completion_percent": progress.completion_percent}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to start module: {str(e)}"}), 500
+
+# Complete Module
+@learning_paths_bp.route('/modules/<int:module_id>/complete', methods=['POST'])
+@jwt_required()
+def complete_module(module_id):
+    try:
+        user, user_id = get_current_user()
+        module = Module.query.get_or_404(module_id)
+        path = LearningPath.query.get_or_404(module.learning_path_id)
+        
+        if path not in user.followed_paths:
+            return jsonify({"error": "You must follow the learning path first"}), 403
+        
+        progress = UserProgress.query.filter_by(user_id=user_id, module_id=module_id).first()
+        
+        if not progress:
+            progress = UserProgress(user_id=user_id, module_id=module_id, completion_percent=100)
+            db.session.add(progress)
+        else:
+            progress.completion_percent = 100
+        
+        db.session.commit()
+        
+        # Award points
+        try:
+            PointsService.award_points(user, 'complete_module')
+        except Exception as e:
+            print(f"Failed to award points: {e}")
+        
+        # Calculate path completion
+        all_modules = Module.query.filter_by(learning_path_id=path.id).all()
+        completed_count = sum(1 for m in all_modules 
+                            if UserProgress.query.filter_by(user_id=user_id, module_id=m.id, completion_percent=100).first())
+        
+        path_completion = int((completed_count / len(all_modules)) * 100) if all_modules else 0
+        
+        return jsonify({
+            "message": "Module marked as complete",
+            "path_completion_percentage": path_completion,
+            "completed_modules": completed_count,
+            "total_modules": len(all_modules)
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to complete module: {str(e)}"}), 500
+
+# Follow Path
+@learning_paths_bp.route('/paths/<int:path_id>/follow', methods=['POST'])
+@jwt_required()
+def follow_path(path_id):
+    try:
+        user, _ = get_current_user()
+        path = LearningPath.query.get_or_404(path_id)
+
+        if path in user.followed_paths:
+            return jsonify({"message": "Already following this path"}), 200
+
+        user.followed_paths.append(path)
+        db.session.commit()
+        return jsonify({"message": "Successfully followed path", "path": {"id": path.id, "title": path.title}}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to follow learning path: {str(e)}"}), 500
+
+# Unfollow Path
 @learning_paths_bp.route('/paths/<int:path_id>/unfollow', methods=['POST'])
 @jwt_required()
 def unfollow_path(path_id):
     try:
-        current_user_identity = get_jwt_identity()
-        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
-        
+        user, _ = get_current_user()
         path = LearningPath.query.get_or_404(path_id)
-        user = User.query.get(user_id)
-        
-        if not user:
-            return jsonify({"error": "User not found"}), 404
 
         if path not in user.followed_paths:
             return jsonify({"error": "Not following this path"}), 400
 
         user.followed_paths.remove(path)
         db.session.commit()
-        return jsonify({
-            "message": "Unfollowed learning path",
-            "path": {"id": path.id, "title": path.title}
-        }), 200
+        return jsonify({"message": "Unfollowed learning path", "path": {"id": path.id, "title": path.title}}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to unfollow learning path"}), 500
 
-# GET user's followed paths 
+# GET My Paths
 @learning_paths_bp.route("/my-paths", methods=["GET"])
 @jwt_required()
 def get_my_learning_paths():
     try:
-        current_user_identity = get_jwt_identity()
-        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
-        
-        user = User.query.get(user_id)
-        
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-
+        user, user_id = get_current_user()
         followed_paths = []
 
         for path in user.followed_paths:
-            # Only include published paths
             if path.is_published:
-                completed_modules = sum(
-                    1 for module in path.modules if module in user.completed_modules
-                )
-                total_modules = len(path.modules)
-                completion_percentage = (
-                    int((completed_modules / total_modules) * 100) if total_modules > 0 else 0
-                )
-
+                completed = sum(1 for m in path.modules 
+                              if UserProgress.query.filter_by(user_id=user_id, module_id=m.id, completion_percent=100).first())
+                total = len(path.modules)
+                
                 followed_paths.append({
                     "id": path.id,
                     "title": path.title,
                     "description": path.description,
-                    "completion_percentage": completion_percentage
+                    "completion_percentage": int((completed / total) * 100) if total > 0 else 0
                 })
 
         return jsonify(followed_paths), 200
-    
     except Exception as e:
-        return jsonify({"error": "Failed to retrieve followed paths", "details": str(e)}), 500
+        return jsonify({"error": f"Failed to retrieve followed paths: {str(e)}"}), 500
 
-# Admin Review Learning Paths
+# Update Learning Path
+@learning_paths_bp.route('/paths/<int:path_id>', methods=['PUT'])
+@jwt_required()
+def update_learning_path(path_id):
+    try:
+        user, user_id = get_current_user()
+        path = LearningPath.query.get_or_404(path_id)
+
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            return jsonify({"error": "Not authorized to edit this learning path"}), 403
+
+        data = request.get_json()
+        title = data.get("title", "").strip()
+        description = data.get("description", "").strip()
+
+        if not title or len(title) < 5:
+            return jsonify({"error": "Title must be at least 5 characters long"}), 400
+        if not description:
+            return jsonify({"error": "Description is required"}), 400
+
+        path.title = title
+        path.description = description
+        path.updated_at = datetime.utcnow()
+        db.session.commit()
+
+        return jsonify({
+            "message": "Learning path updated successfully",
+            "path": {"id": path.id, "title": path.title, "description": path.description, 
+                    "is_published": path.is_published, "status": path.status.value}
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to update learning path: {str(e)}"}), 500
+
+# Delete Learning Path
+@learning_paths_bp.route('/paths/<int:path_id>', methods=['DELETE'])
+@jwt_required()
+def delete_learning_path(path_id):
+    try:
+        user, user_id = get_current_user()
+        path = LearningPath.query.get_or_404(path_id)
+
+        if int(path.creator_id) != int(user_id) and user.role != "admin":
+            return jsonify({"error": "Not authorized to delete this path"}), 403
+
+        db.session.delete(path)
+        db.session.commit()
+        return jsonify({"message": "Learning path deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to delete path: {str(e)}"}), 500
+
+# Admin Review Path
 @learning_paths_bp.route('/admin/paths/<int:path_id>/review', methods=['PUT'])
 @jwt_required()
 @role_required("admin")
 def review_learning_path(path_id):
     try:
-        current_user_identity = get_jwt_identity()
-        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
-        
+        user, user_id = get_current_user()
         path = LearningPath.query.get_or_404(path_id)
         data = request.get_json()
         
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-            
         action = data.get("action")
         reason = data.get("reason", "")
 
@@ -317,17 +492,15 @@ def review_learning_path(path_id):
             path.reviewed_by = user_id
             path.rejection_reason = None
             
-            # Award points to creator
             if path.creator:
                 try:
                     PointsService.award_points(path.creator, 'learning_path_approved')
-                except Exception as points_error:
-                    print(f"Failed to award points: {points_error}")
+                except Exception as e:
+                    print(f"Failed to award points: {e}")
             
         elif action == "reject":
-            if not reason or reason.strip() == "":
+            if not reason.strip():
                 return jsonify({"error": "Rejection reason is required"}), 400
-                
             path.status = ContentStatusEnum.rejected
             path.is_published = False
             path.rejection_reason = reason
@@ -336,135 +509,63 @@ def review_learning_path(path_id):
             return jsonify({"error": "Invalid action. Use 'approve' or 'reject'"}), 400
 
         db.session.commit()
-        
         return jsonify({
             "message": f"Learning path {action}d successfully",
-            "path": {
-                "id": path.id,
-                "title": path.title,
-                "status": path.status.value,
-                "is_published": path.is_published
-            }
+            "path": {"id": path.id, "title": path.title, "status": path.status.value, "is_published": path.is_published}
         }), 200
-        
     except Exception as e:
         db.session.rollback()
-        print(f"Error reviewing learning path: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({"error": f"Failed to review learning path: {str(e)}"}), 500
 
-# Admin Get pending paths
+# Admin Get Pending Paths
 @learning_paths_bp.route('/admin/paths/pending', methods=['GET'])
 @jwt_required()
 @role_required("admin")
 def get_pending_paths():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get("per_page", 10, type=int)
-    pending_paths = LearningPath.query.filter_by(status=ContentStatusEnum.pending).paginate(page=page, per_page=per_page, error_out=False)
-
-    data = [
-        {
-            "id": path.id,
-            "title": path.title,
-            "description": path.description,
-            "creator": path.creator.username if path.creator else "Unknown",
-            "module_count": path.modules.count(),
-            "created_at": path.created_at.isoformat()
-        } for path in pending_paths.items
-    ]
+    pending = LearningPath.query.filter_by(status=ContentStatusEnum.pending).paginate(page=page, per_page=per_page, error_out=False)
 
     return jsonify({
-        "pending_paths": data,
+        "pending_paths": [{
+            "id": p.id,
+            "title": p.title,
+            "description": p.description,
+            "creator": p.creator.username if p.creator else "Unknown",
+            "module_count": p.modules.count(),
+            "created_at": p.created_at.isoformat()
+        } for p in pending.items],
         "page": page,
-        "total_pages": pending_paths.pages,
-        "total_items": pending_paths.total
+        "total_pages": pending.pages,
+        "total_items": pending.total
     }), 200
 
-@learning_paths_bp.route('/stats', methods=['GET'])
-@jwt_required()
-def get_user_stats():
-    """Return basic contributor stats"""
-    try:
-        current_user_identity = get_jwt_identity()
-        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
-        user = User.query.get(user_id)
-
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-
-        # Example contributor stats
-        total_paths = LearningPath.query.filter_by(creator_id=user_id).count()
-        approved_paths = LearningPath.query.filter_by(creator_id=user_id, status="approved").count()
-        total_views = sum(lp.views for lp in LearningPath.query.filter_by(creator_id=user_id).all() if hasattr(lp, "views"))
-        contribution_xp = getattr(user, "xp", 0)  # assuming your User model tracks XP
-        avg_rating = getattr(user, "avg_rating", 4.7)  # placeholder if not yet implemented
-
-        return jsonify({
-            "xp": contribution_xp,
-            "level": user.level if hasattr(user, "level") else 1,
-            "total_resources": total_paths,
-            "approved_resources": approved_paths,
-            "total_views": total_views,
-            "avg_rating": avg_rating
-        }), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-# =============================
-# 📊 Contributor Stats Endpoint
-# =============================
+# Contributor Stats
 @learning_paths_bp.route("/stats", methods=["GET"])
 @jwt_required()
 def get_contributor_stats():
     try:
-        current_user_identity = get_jwt_identity()
-        user_id = current_user_identity["id"] if isinstance(current_user_identity, dict) else current_user_identity
-        user = User.query.get(user_id)
-
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-
-        # --- Basic stats ---
-        total_paths = LearningPath.query.filter_by(creator_id=user_id).count()
-        approved_paths = LearningPath.query.filter_by(
-            creator_id=user_id, status=ContentStatusEnum.approved
-        ).count()
-
-        # --- Total views (if you track them on LearningPath) ---
-        total_views = 0
+        user, user_id = get_current_user()
         paths = LearningPath.query.filter_by(creator_id=user_id).all()
-        for path in paths:
-            total_views += getattr(path, "views", 0)
+        
+        total_paths = len(paths)
+        approved_paths = sum(1 for p in paths if p.status == ContentStatusEnum.approved)
+        total_views = sum(getattr(p, "views", 0) for p in paths)
+        
+        xp = getattr(user, "xp", 0)
+        level = xp // 1000 + 1
+        
+        # Calculate avg rating
+        ratings = [p.rating for p in paths if hasattr(p, "rating") and p.rating is not None]
+        avg_rating = round(sum(ratings) / len(ratings), 1) if ratings else 0
 
-        # --- XP and Level ---
-        # If your PointsService is tracking XP per user
-        contribution_xp = getattr(user, "xp", 0)
-        # Level formula: 1 level per 1000 XP (example)
-        level = contribution_xp // 1000 + 1
-
-        # --- Average rating (if you track it) ---
-        avg_rating = getattr(user, "avg_rating", None)
-        if avg_rating is None:
-            # fallback: compute from paths if ratings exist
-            total_rating = 0
-            total_count = 0
-            for path in paths:
-                if hasattr(path, "rating") and path.rating is not None:
-                    total_rating += path.rating
-                    total_count += 1
-            avg_rating = round(total_rating / total_count, 1) if total_count > 0 else 0
-
-        # ✅ Return formatted data
         return jsonify({
-            "xp": contribution_xp,
+            "xp": xp,
             "level": level,
             "total_resources": total_paths,
             "approved_resources": approved_paths,
             "total_views": total_views,
             "avg_rating": avg_rating
         }), 200
-
     except Exception as e:
-        print(f"Error fetching contributor stats: {e}")
         return jsonify({"error": str(e)}), 500

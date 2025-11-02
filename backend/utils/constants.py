@@ -20,6 +20,10 @@ POINTS_CONFIG = {
     'win_leaderboard_weekly': 300,
     
     'earn_badge': 10,  
+    'challenge_bonus': 15,           
+    'quiz_correct_answers': 10,     
+    'quiz_perfect': 25,             
+    'quiz_attempt': 5,   
 }
 
 XP_CONFIG = {

@@ -85,6 +85,9 @@ def login():
     # Update streak
     user.update_streak()
 
+    from services.core_services import PointsService
+    PointsService.award_daily_login(user)
+    
     # Create JWT token (identity as string to avoid errors)
     access_token = create_access_token(
         identity=str(user.id),
