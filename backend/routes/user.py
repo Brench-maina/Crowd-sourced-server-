@@ -95,3 +95,22 @@ def get_all_users():
             "xp": u.xp
         } for u in users
     ]), 200
+ 
+@user_bp.route("/stats", methods=["GET"])
+@jwt_required()
+@role_required("admin")
+def get_user_stats():
+    from datetime import datetime, timedelta
+    
+    total_users = User.query.count()
+    
+    # Count users created in last 7 days
+    one_week_ago = datetime.utcnow() - timedelta(days=7)
+    new_users_week = User.query.filter(User.created_at >= one_week_ago).count()
+    
+    return jsonify({
+        "total_users": total_users,
+        "new_users_week": new_users_week
+    }), 200
+   
+
