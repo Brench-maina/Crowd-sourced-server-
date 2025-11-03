@@ -20,8 +20,8 @@ def seed_database():
             email="admin@learnplatform.com",
             password_hash=generate_password_hash("admin123"),
             role=RoleEnum.admin,
-            xp=1200,      # XP from activities
-            points=950,   # Points slightly lower
+            xp=1200,     
+            points=950,  
             streak_days=10,
             created_at=datetime.utcnow() - timedelta(days=30)
         ),
@@ -30,8 +30,8 @@ def seed_database():
             email="contributor@learnplatform.com",
             password_hash=generate_password_hash("contrib123"),
             role=RoleEnum.contributor,
-            xp=600,       # XP from creating content
-            points=400,   # Lower points
+            xp=600,       
+            points=400,   
             streak_days=5,
             created_at=datetime.utcnow() - timedelta(days=25)
         ),
@@ -39,12 +39,7 @@ def seed_database():
             username="learner",
             email="learner@learnplatform.com",
             password_hash=generate_password_hash("learner123"),
-            role=RoleEnum.learner,
-            # 2 modules complete: 2×50 = 100 points, 2×100 = 200 XP
-            # 2 quizzes passed: 2×20 = 40 points, 2×150 = 300 XP
-            # 15 days login: 15×5 = 75 points, 0 XP
-            # 1 badge earned: 1×10 = 10 points
-            # Total: 225 points, 500 XP
+            role=RoleEnum.learner
             xp=500,       
             points=225,   
             streak_days=15,
@@ -54,13 +49,7 @@ def seed_database():
             username="alice",
             email="alice@learnplatform.com",
             password_hash=generate_password_hash("alice123"),
-            role=RoleEnum.learner,
-            # 4 modules complete: 4×50 = 200 points, 4×100 = 400 XP
-            # 4 quizzes passed: 4×20 = 80 points, 4×150 = 600 XP
-            # 20 days login: 20×5 = 100 points, 0 XP
-            # 2 badges earned: 2×10 = 20 points
-            # Streak bonus: 200 XP (7-day streak)
-            # Total: 400 points, 1200 XP
+            role=RoleEnum.learner
             xp=1200,      
             points=400,   
             streak_days=20,
@@ -89,9 +78,7 @@ def seed_database():
     ]
     db.session.add_all(users)
     db.session.commit()
-    print("✅ Users added.")
-
-
+   
     badges = [
         Badge(key="first_module", name="First Module Completed", description="Awarded for completing your first module"),
         Badge(key="module_explorer", name="Module Explorer", description="Awarded for completing 5 modules"),
@@ -104,8 +91,6 @@ def seed_database():
     ]  
     db.session.add_all(badges)
     db.session.commit()
-    print("✅ Badges added.")
-
     
     lp1 = LearningPath(
         title="Python Basics", 
@@ -145,8 +130,7 @@ def seed_database():
 
     db.session.add_all([m1, m2, m3, m4, m5, m6, m7])
     db.session.commit()
-    print("✅ Learning Paths and Modules added.")
-
+  
     # === LEARNING RESOURCES ===
     resources = [
         LearningResource(
